@@ -34,6 +34,7 @@ export interface Product {
   detailed_description?: string;
   country?: string;
   region?: string;
+  wine_type?: string; // "Red Wine", "White Wine", "Sparkling Wine", etc.
   wine_style?: string;
   vintage?: number;
   winery?: string;

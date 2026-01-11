@@ -1269,6 +1269,30 @@ def get_menu(
         if catalog_item and catalog_item.description:
             product_data["description"] = catalog_item.description
         
+        # Extract wine type from subcategory (e.g., "Red Wine - D.O. Empordà" -> "Red Wine")
+        wine_type = None
+        if catalog_item and catalog_item.subcategory:
+            # Subcategory format: "Red Wine - D.O. Empordà - Wine by Glass"
+            # Extract first part before first " - "
+            subcategory_parts = catalog_item.subcategory.split(" - ")
+            first_part = subcategory_parts[0].strip()
+            # Check if it's a known wine type
+            wine_types = ["Red Wine", "White Wine", "Sparkling Wine", "Rosé Wine", "Sweet Wine", "Fortified Wine"]
+            if first_part in wine_types:
+                wine_type = first_part
+            # Also check for Spanish terms
+            elif "Red" in first_part or "Tinto" in first_part or "Tintos" in first_part:
+                wine_type = "Red Wine"
+            elif "White" in first_part or "Blanco" in first_part or "Blancos" in first_part:
+                wine_type = "White Wine"
+            elif "Sparkling" in first_part or "Espumoso" in first_part or "Cava" in first_part:
+                wine_type = "Sparkling Wine"
+            elif "Rosé" in first_part or "Rosado" in first_part:
+                wine_type = "Rosé Wine"
+        
+        if wine_type:
+            product_data["wine_type"] = wine_type
+        
         # Add detailed wine information from provider product
         if provider_product:
             if provider_product.detailed_description:

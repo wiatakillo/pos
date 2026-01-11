@@ -120,7 +120,14 @@ interface PlacedOrder {
                     }
                     <div class="product-details">
                       <div class="product-main">
-                        <h3>{{ product.name }}</h3>
+                        <div class="product-header">
+                          <h3>{{ product.name }}</h3>
+                          @if (product.wine_type) {
+                            <span class="wine-type-badge" [class]="'wine-type-' + getWineTypeClass(product.wine_type)">
+                              {{ getWineTypeLabel(product.wine_type) }}
+                            </span>
+                          }
+                        </div>
                         <span class="product-price">{{ formatPrice(product.price_cents) }}</span>
                       </div>
                       
@@ -478,12 +485,75 @@ interface PlacedOrder {
       margin-bottom: 6px;
     }
 
+    .product-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 4px;
+    }
+
     .product-main h3 {
-      margin: 0 0 4px;
+      margin: 0;
       font-size: 1rem;
       font-weight: 600;
       color: var(--color-text);
       line-height: 1.3;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .wine-type-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      flex-shrink: 0;
+    }
+
+    .wine-type-badge.wine-type-red {
+      background: rgba(220, 38, 38, 0.15);
+      color: #dc2626;
+      border: 1px solid rgba(220, 38, 38, 0.3);
+    }
+
+    .wine-type-badge.wine-type-white {
+      background: rgba(251, 191, 36, 0.15);
+      color: #d97706;
+      border: 1px solid rgba(251, 191, 36, 0.3);
+    }
+
+    .wine-type-badge.wine-type-sparkling {
+      background: rgba(59, 130, 246, 0.15);
+      color: #2563eb;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+
+    .wine-type-badge.wine-type-rose {
+      background: rgba(244, 114, 182, 0.15);
+      color: #db2777;
+      border: 1px solid rgba(244, 114, 182, 0.3);
+    }
+
+    .wine-type-badge.wine-type-sweet {
+      background: rgba(168, 85, 247, 0.15);
+      color: #9333ea;
+      border: 1px solid rgba(168, 85, 247, 0.3);
+    }
+
+    .wine-type-badge.wine-type-fortified {
+      background: rgba(120, 53, 15, 0.15);
+      color: #92400e;
+      border: 1px solid rgba(120, 53, 15, 0.3);
+    }
+
+    .wine-type-badge.wine-type-other {
+      background: var(--color-surface);
+      color: var(--color-text);
+      border: 1px solid var(--color-border);
     }
 
     .product-price {
@@ -1016,5 +1086,27 @@ export class MenuComponent implements OnInit {
     // Clear the order from localStorage since it's paid
     this.placedOrders.set([]);
     localStorage.removeItem(`orders_${this.tableToken}`);
+  }
+
+  getWineTypeClass(wineType: string): string {
+    const type = wineType.toLowerCase();
+    if (type.includes('red')) return 'red';
+    if (type.includes('white')) return 'white';
+    if (type.includes('sparkling')) return 'sparkling';
+    if (type.includes('rosé') || type.includes('rose')) return 'rose';
+    if (type.includes('sweet')) return 'sweet';
+    if (type.includes('fortified')) return 'fortified';
+    return 'other';
+  }
+
+  getWineTypeLabel(wineType: string): string {
+    // Return shorter labels for display
+    if (wineType.includes('Red')) return 'Tinto';
+    if (wineType.includes('White')) return 'Blanco';
+    if (wineType.includes('Sparkling')) return 'Espumoso';
+    if (wineType.includes('Rosé') || wineType.includes('Rose')) return 'Rosado';
+    if (wineType.includes('Sweet')) return 'Dulce';
+    if (wineType.includes('Fortified')) return 'Generoso';
+    return wineType;
   }
 }
