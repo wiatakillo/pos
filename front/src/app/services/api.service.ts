@@ -103,6 +103,87 @@ export interface OrderCreate {
   notes?: string;
 }
 
+// Provider & Catalog Interfaces
+export interface Provider {
+  id?: number;
+  name: string;
+  url?: string | null;
+  api_endpoint?: string | null;
+  is_active?: boolean;
+  created_at?: string;
+}
+
+export interface ProviderProduct {
+  id?: number;
+  catalog_id: number;
+  provider_id: number;
+  external_id: string;
+  name: string;
+  price_cents?: number | null;
+  image_url?: string | null;
+  availability?: boolean;
+  country?: string | null;
+  region?: string | null;
+  grape_variety?: string | null;
+  volume_ml?: number | null;
+  unit?: string | null;
+}
+
+export interface CatalogItem {
+  id: number;
+  name: string;
+  description?: string | null;
+  detailed_description?: string | null;
+  category?: string | null;
+  subcategory?: string | null;
+  barcode?: string | null;
+  brand?: string | null;
+  image_url?: string | null;
+  country?: string | null;
+  region?: string | null;
+  wine_style?: string | null;
+  vintage?: number | null;
+  winery?: string | null;
+  grape_variety?: string | null;
+  aromas?: string | null;
+  elaboration?: string | null;
+  providers: ProviderInfo[];
+  min_price_cents?: number | null;
+  max_price_cents?: number | null;
+}
+
+export interface ProviderInfo {
+  provider_id: number;
+  provider_name: string;
+  provider_product_id?: number;
+  price_cents?: number | null;
+  image_url?: string | null;
+  country?: string | null;
+  region?: string | null;
+  grape_variety?: string | null;
+  volume_ml?: number | null;
+  unit?: string | null;
+}
+
+export interface TenantProduct {
+  id?: number;
+  tenant_id?: number;
+  catalog_id: number;
+  provider_product_id?: number | null;
+  product_id?: number | null;
+  name: string;
+  price_cents: number;
+  image_filename?: string | null;
+  ingredients?: string | null;
+  is_active?: boolean;
+  catalog_name?: string | null;
+  provider_info?: {
+    provider_id: number;
+    provider_name: string;
+    provider_price_cents?: number | null;
+  } | null;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -340,5 +421,63 @@ export class ApiService {
       this.ws.close();
       this.ws = null;
     }
+  }
+
+  // Providers
+  getProviders(activeOnly: boolean = true): Observable<Provider[]> {
+    const params = new HttpParams().set('active_only', activeOnly.toString());
+    return this.http.get<Provider[]>(`${this.apiUrl}/providers`, { params });
+  }
+
+  getProvider(id: number): Observable<Provider> {
+    return this.http.get<Provider>(`${this.apiUrl}/providers/${id}`);
+  }
+
+  createProvider(provider: Provider): Observable<Provider> {
+    return this.http.post<Provider>(`${this.apiUrl}/providers`, provider);
+  }
+
+  // Catalog
+  getCatalog(category?: string, subcategory?: string, search?: string): Observable<CatalogItem[]> {
+    let params = new HttpParams();
+    if (category) params = params.set('category', category);
+    if (subcategory) params = params.set('subcategory', subcategory);
+    if (search) params = params.set('search', search);
+    return this.http.get<CatalogItem[]>(`${this.apiUrl}/catalog`, { params });
+  }
+
+  getCatalogItem(id: number): Observable<CatalogItem> {
+    return this.http.get<CatalogItem>(`${this.apiUrl}/catalog/${id}`);
+  }
+
+  getCatalogCategories(): Observable<Record<string, string[]>> {
+    return this.http.get<Record<string, string[]>>(`${this.apiUrl}/catalog/categories`);
+  }
+
+  // Provider Products
+  getProviderProducts(providerId: number): Observable<ProviderProduct[]> {
+    return this.http.get<ProviderProduct[]>(`${this.apiUrl}/providers/${providerId}/products`);
+  }
+
+  // Tenant Products
+  getTenantProducts(activeOnly: boolean = true): Observable<TenantProduct[]> {
+    const params = new HttpParams().set('active_only', activeOnly.toString());
+    return this.http.get<TenantProduct[]>(`${this.apiUrl}/tenant-products`, { params });
+  }
+
+  createTenantProduct(catalogId: number, providerProductId?: number, name?: string, priceCents?: number): Observable<TenantProduct> {
+    const body: any = { catalog_id: catalogId };
+    if (providerProductId) body.provider_product_id = providerProductId;
+    if (name) body.name = name;
+    if (priceCents !== undefined) body.price_cents = priceCents;
+    return this.http.post<TenantProduct>(`${this.apiUrl}/tenant-products`, body);
+  }
+
+  updateTenantProduct(id: number, updates: { name?: string; price_cents?: number; is_active?: boolean }): Observable<TenantProduct> {
+    return this.http.put<TenantProduct>(`${this.apiUrl}/tenant-products/${id}`, updates);
+  }
+
+  deleteTenantProduct(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/tenant-products/${id}`);
   }
 }

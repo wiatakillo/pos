@@ -10,7 +10,7 @@ from uuid import uuid4
 from PIL import Image
 import redis
 import stripe
-from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, status
+from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, status, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
@@ -680,6 +680,482 @@ async def upload_product_image(
     return product_dict
 
 
+# ============ PROVIDERS ============
+
+@app.get("/providers")
+def list_providers(
+    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    session: Session = Depends(get_session),
+    active_only: bool = True
+) -> list[models.Provider]:
+    """List all product providers."""
+    query = select(models.Provider)
+    if active_only:
+        query = query.where(models.Provider.is_active == True)
+    return session.exec(query.order_by(models.Provider.name)).all()
+
+
+@app.get("/providers/{provider_id}")
+def get_provider(
+    provider_id: int,
+    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    session: Session = Depends(get_session)
+) -> models.Provider:
+    """Get a specific provider."""
+    provider = session.exec(select(models.Provider).where(models.Provider.id == provider_id)).first()
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+    return provider
+
+
+@app.post("/providers")
+def create_provider(
+    provider: models.Provider,
+    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    session: Session = Depends(get_session)
+) -> models.Provider:
+    """Create a new provider (admin function)."""
+    session.add(provider)
+    session.commit()
+    session.refresh(provider)
+    return provider
+
+
+# ============ PRODUCT CATALOG ============
+
+@app.get("/catalog")
+async def list_catalog(
+    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    session: Session = Depends(get_session),
+    category: str | None = None,
+    subcategory: str | None = None,
+    search: str | None = None
+) -> list[dict]:
+    """List products from catalog with price comparison across providers."""
+    query = select(models.ProductCatalog)
+    
+    if category:
+        query = query.where(models.ProductCatalog.category == category)
+    if subcategory:
+        query = query.where(models.ProductCatalog.subcategory == subcategory)
+    if search:
+        search_term = f"%{search.lower()}%"
+        query = query.where(
+            (models.ProductCatalog.name.ilike(search_term)) |
+            (models.ProductCatalog.description.ilike(search_term))
+        )
+    
+    catalog_items = session.exec(query.order_by(models.ProductCatalog.name)).all()
+    
+    result = []
+    for item in catalog_items:
+        # Get all provider products for this catalog item
+        provider_products = session.exec(
+            select(models.ProviderProduct).where(
+                models.ProviderProduct.catalog_id == item.id,
+                models.ProviderProduct.availability == True
+            )
+        ).all()
+        
+        # Get provider info
+        providers_data = []
+        for pp in provider_products:
+            provider = session.exec(
+                select(models.Provider).where(models.Provider.id == pp.provider_id)
+            ).first()
+            if provider:
+                # Construct image URL - prefer local image if available
+                image_url = None
+                if pp.image_filename:
+                    image_url = f"/uploads/providers/{provider.token}/products/{pp.image_filename}"
+                elif pp.image_url:
+                    image_url = pp.image_url
+                
+                providers_data.append({
+                    "provider_id": provider.id,
+                    "provider_name": provider.name,
+                    "provider_product_id": pp.id,
+                    "price_cents": pp.price_cents,
+                    "image_url": image_url,
+                    "country": pp.country,
+                    "region": pp.region,
+                    "grape_variety": pp.grape_variety,
+                    "volume_ml": pp.volume_ml,
+                    "unit": pp.unit,
+                    "detailed_description": pp.detailed_description,
+                    "wine_style": pp.wine_style,
+                    "vintage": pp.vintage,
+                    "winery": pp.winery,
+                    "aromas": pp.aromas,
+                    "elaboration": pp.elaboration,
+                })
+        
+        # Sort providers by price (lowest first)
+        providers_data.sort(key=lambda x: x["price_cents"] if x["price_cents"] else float('inf'))
+        
+        # Get main image from first provider (if available)
+        main_image_url = None
+        if providers_data and providers_data[0].get("image_url"):
+            main_image_url = providers_data[0]["image_url"]
+        
+        # Get origin (country/region) and detailed info from first provider - this is product-level info
+        origin_country = None
+        origin_region = None
+        detailed_description = None
+        wine_style = None
+        vintage = None
+        winery = None
+        grape_variety = None
+        aromas = None
+        elaboration = None
+        
+        if providers_data:
+            # Use first provider's data (most common case)
+            origin_country = providers_data[0].get("country")
+            origin_region = providers_data[0].get("region")
+            detailed_description = providers_data[0].get("detailed_description")
+            wine_style = providers_data[0].get("wine_style")
+            vintage = providers_data[0].get("vintage")
+            winery = providers_data[0].get("winery")
+            grape_variety = providers_data[0].get("grape_variety")
+            aromas = providers_data[0].get("aromas")
+            elaboration = providers_data[0].get("elaboration")
+        
+        result.append({
+            "id": item.id,
+            "name": item.name,
+            "description": item.description,
+            "detailed_description": detailed_description,
+            "category": item.category,
+            "subcategory": item.subcategory,
+            "barcode": item.barcode,
+            "brand": item.brand,
+            "image_url": main_image_url,
+            "country": origin_country,
+            "region": origin_region,
+            "wine_style": wine_style,
+            "vintage": vintage,
+            "winery": winery,
+            "grape_variety": grape_variety,
+            "aromas": aromas,
+            "elaboration": elaboration,
+            "providers": providers_data,
+            "min_price_cents": min([p["price_cents"] for p in providers_data if p["price_cents"]], default=None),
+            "max_price_cents": max([p["price_cents"] for p in providers_data if p["price_cents"]], default=None),
+        })
+    
+    return result
+
+
+@app.get("/catalog/categories")
+async def get_catalog_categories(
+    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    session: Session = Depends(get_session)
+) -> dict:
+    """Get all categories and subcategories from catalog."""
+    catalog_items = session.exec(select(models.ProductCatalog)).all()
+    
+    categories = {}
+    for item in catalog_items:
+        if item.category:
+            if item.category not in categories:
+                categories[item.category] = set()
+            if item.subcategory:
+                categories[item.category].add(item.subcategory)
+    
+    return {
+        cat: sorted(list(subcats)) 
+        for cat, subcats in categories.items()
+    }
+
+
+@app.get("/catalog/{catalog_id}")
+async def get_catalog_item(
+    catalog_id: int,
+    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    session: Session = Depends(get_session)
+) -> dict:
+    """Get a specific catalog item with price comparison."""
+    catalog_item = session.exec(
+        select(models.ProductCatalog).where(models.ProductCatalog.id == catalog_id)
+    ).first()
+    
+    if not catalog_item:
+        raise HTTPException(status_code=404, detail="Catalog item not found")
+    
+    # Get all provider products
+    provider_products = session.exec(
+        select(models.ProviderProduct).where(
+            models.ProviderProduct.catalog_id == catalog_id,
+            models.ProviderProduct.availability == True
+        )
+    ).all()
+    
+    providers_data = []
+    for pp in provider_products:
+        provider = session.exec(
+            select(models.Provider).where(models.Provider.id == pp.provider_id)
+        ).first()
+        if provider:
+            # Construct image URL - prefer local image if available
+            image_url = None
+            if pp.image_filename:
+                image_url = f"/uploads/providers/{provider.token}/products/{pp.image_filename}"
+            elif pp.image_url:
+                image_url = pp.image_url
+            
+            providers_data.append({
+                "provider_id": provider.id,
+                "provider_name": provider.name,
+                "price_cents": pp.price_cents,
+                "image_url": image_url,
+                "country": pp.country,
+                "region": pp.region,
+                "grape_variety": pp.grape_variety,
+                "volume_ml": pp.volume_ml,
+                "unit": pp.unit,
+            })
+    
+    providers_data.sort(key=lambda x: x["price_cents"] if x["price_cents"] else float('inf'))
+    
+    # Get main image from first provider (if available)
+    main_image_url = None
+    if providers_data and providers_data[0].get("image_url"):
+        main_image_url = providers_data[0]["image_url"]
+    
+    # Get origin (country/region) and detailed info from first provider - this is product-level info
+    origin_country = None
+    origin_region = None
+    detailed_description = None
+    wine_style = None
+    vintage = None
+    winery = None
+    grape_variety = None
+    aromas = None
+    elaboration = None
+    
+    if providers_data:
+        origin_country = providers_data[0].get("country")
+        origin_region = providers_data[0].get("region")
+        detailed_description = providers_data[0].get("detailed_description")
+        wine_style = providers_data[0].get("wine_style")
+        vintage = providers_data[0].get("vintage")
+        winery = providers_data[0].get("winery")
+        grape_variety = providers_data[0].get("grape_variety")
+        aromas = providers_data[0].get("aromas")
+        elaboration = providers_data[0].get("elaboration")
+    
+    return {
+        "id": catalog_item.id,
+        "name": catalog_item.name,
+        "description": catalog_item.description,
+        "detailed_description": detailed_description,
+        "category": catalog_item.category,
+        "subcategory": catalog_item.subcategory,
+        "barcode": catalog_item.barcode,
+        "brand": catalog_item.brand,
+        "image_url": main_image_url,
+        "country": origin_country,
+        "region": origin_region,
+        "wine_style": wine_style,
+        "vintage": vintage,
+        "winery": winery,
+        "grape_variety": grape_variety,
+        "aromas": aromas,
+        "elaboration": elaboration,
+        "providers": providers_data,
+        "min_price_cents": min([p["price_cents"] for p in providers_data if p["price_cents"]], default=None),
+        "max_price_cents": max([p["price_cents"] for p in providers_data if p["price_cents"]], default=None),
+    }
+
+
+# ============ PROVIDER PRODUCTS ============
+
+@app.get("/providers/{provider_id}/products")
+def list_provider_products(
+    provider_id: int,
+    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    session: Session = Depends(get_session)
+) -> list[models.ProviderProduct]:
+    """List all products from a specific provider."""
+    provider = session.exec(select(models.Provider).where(models.Provider.id == provider_id)).first()
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+    
+    return session.exec(
+        select(models.ProviderProduct)
+        .where(models.ProviderProduct.provider_id == provider_id)
+        .order_by(models.ProviderProduct.name)
+    ).all()
+
+
+# ============ TENANT PRODUCTS ============
+
+@app.get("/tenant-products")
+def list_tenant_products(
+    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    session: Session = Depends(get_session),
+    active_only: bool = True
+) -> list[dict]:
+    """List products selected by the tenant (restaurant)."""
+    query = select(models.TenantProduct).where(
+        models.TenantProduct.tenant_id == current_user.tenant_id
+    )
+    
+    if active_only:
+        query = query.where(models.TenantProduct.is_active == True)
+    
+    tenant_products = session.exec(query.order_by(models.TenantProduct.name)).all()
+    
+    result = []
+    for tp in tenant_products:
+        # Get catalog item info
+        catalog_item = session.exec(
+            select(models.ProductCatalog).where(models.ProductCatalog.id == tp.catalog_id)
+        ).first()
+        
+        # Get provider product info if linked
+        provider_info = None
+        if tp.provider_product_id:
+            provider_product = session.exec(
+                select(models.ProviderProduct).where(models.ProviderProduct.id == tp.provider_product_id)
+            ).first()
+            if provider_product:
+                provider = session.exec(
+                    select(models.Provider).where(models.Provider.id == provider_product.provider_id)
+                ).first()
+                if provider:
+                    provider_info = {
+                        "provider_id": provider.id,
+                        "provider_name": provider.name,
+                        "provider_price_cents": provider_product.price_cents,
+                    }
+        
+        result.append({
+            "id": tp.id,
+            "name": tp.name,
+            "price_cents": tp.price_cents,
+            "image_filename": tp.image_filename,
+            "ingredients": tp.ingredients,
+            "is_active": tp.is_active,
+            "catalog_id": tp.catalog_id,
+            "catalog_name": catalog_item.name if catalog_item else None,
+            "provider_info": provider_info,
+            "product_id": tp.product_id,  # For backward compatibility
+        })
+    
+    return result
+
+
+@app.post("/tenant-products")
+def create_tenant_product(
+    product_data: models.TenantProductCreate,
+    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    session: Session = Depends(get_session)
+) -> models.TenantProduct:
+    """Add a product from catalog to tenant's menu."""
+    # Get catalog item
+    catalog_item = session.exec(
+        select(models.ProductCatalog).where(models.ProductCatalog.id == product_data.catalog_id)
+    ).first()
+    if not catalog_item:
+        raise HTTPException(status_code=404, detail="Catalog item not found")
+    
+    # If provider_product_id is provided, validate it
+    if product_data.provider_product_id:
+        provider_product = session.exec(
+            select(models.ProviderProduct).where(
+                models.ProviderProduct.id == product_data.provider_product_id,
+                models.ProviderProduct.catalog_id == product_data.catalog_id
+            )
+        ).first()
+        if not provider_product:
+            raise HTTPException(status_code=404, detail="Provider product not found or doesn't match catalog")
+    
+    # Use catalog name if name not provided
+    product_name = product_data.name or catalog_item.name
+    
+    # Use provider price if price not provided and provider_product_id is set
+    price_cents = product_data.price_cents
+    if price_cents is None and product_data.provider_product_id:
+        provider_product = session.exec(
+            select(models.ProviderProduct).where(models.ProviderProduct.id == product_data.provider_product_id)
+        ).first()
+        if provider_product and provider_product.price_cents:
+            price_cents = provider_product.price_cents
+        else:
+            raise HTTPException(status_code=400, detail="Price is required")
+    
+    if price_cents is None:
+        raise HTTPException(status_code=400, detail="Price is required")
+    
+    tenant_product = models.TenantProduct(
+        tenant_id=current_user.tenant_id,
+        catalog_id=product_data.catalog_id,
+        provider_product_id=product_data.provider_product_id,
+        name=product_name,
+        price_cents=price_cents,
+    )
+    
+    session.add(tenant_product)
+    session.commit()
+    session.refresh(tenant_product)
+    return tenant_product
+
+
+@app.put("/tenant-products/{tenant_product_id}")
+def update_tenant_product(
+    tenant_product_id: int,
+    product_update: models.TenantProductUpdate,
+    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    session: Session = Depends(get_session)
+) -> models.TenantProduct:
+    """Update a tenant product."""
+    tenant_product = session.exec(
+        select(models.TenantProduct).where(
+            models.TenantProduct.id == tenant_product_id,
+            models.TenantProduct.tenant_id == current_user.tenant_id
+        )
+    ).first()
+    
+    if not tenant_product:
+        raise HTTPException(status_code=404, detail="Tenant product not found")
+    
+    if product_update.name is not None:
+        tenant_product.name = product_update.name
+    if product_update.price_cents is not None:
+        tenant_product.price_cents = product_update.price_cents
+    if product_update.is_active is not None:
+        tenant_product.is_active = product_update.is_active
+    
+    session.add(tenant_product)
+    session.commit()
+    session.refresh(tenant_product)
+    return tenant_product
+
+
+@app.delete("/tenant-products/{tenant_product_id}")
+def delete_tenant_product(
+    tenant_product_id: int,
+    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    session: Session = Depends(get_session)
+) -> dict:
+    """Delete a tenant product."""
+    tenant_product = session.exec(
+        select(models.TenantProduct).where(
+            models.TenantProduct.id == tenant_product_id,
+            models.TenantProduct.tenant_id == current_user.tenant_id
+        )
+    ).first()
+    
+    if not tenant_product:
+        raise HTTPException(status_code=404, detail="Tenant product not found")
+    
+    session.delete(tenant_product)
+    session.commit()
+    return {"status": "deleted", "id": tenant_product_id}
+
+
 # ============ TABLES ============
 
 @app.get("/tables")
@@ -737,11 +1213,58 @@ def get_menu(
     if not table:
         raise HTTPException(status_code=404, detail="Table not found")
     
-    products = session.exec(
+    # Get products from TenantProduct (new catalog system) and Product (legacy)
+    tenant_products = session.exec(
+        select(models.TenantProduct).where(
+            models.TenantProduct.tenant_id == table.tenant_id,
+            models.TenantProduct.is_active == True
+        )
+    ).all()
+    
+    legacy_products = session.exec(
         select(models.Product).where(models.Product.tenant_id == table.tenant_id)
     ).all()
     
     tenant = session.exec(select(models.Tenant).where(models.Tenant.id == table.tenant_id)).first()
+    
+    # Combine products from both sources
+    products_list = []
+    
+    # Add TenantProducts (from catalog)
+    for tp in tenant_products:
+        # Get image from provider product if available, otherwise use tenant product image
+        image_filename = tp.image_filename
+        if not image_filename and tp.provider_product_id:
+            provider_product = session.exec(
+                select(models.ProviderProduct).where(models.ProviderProduct.id == tp.provider_product_id)
+            ).first()
+            if provider_product and provider_product.image_filename:
+                provider = session.exec(
+                    select(models.Provider).where(models.Provider.id == provider_product.provider_id)
+                ).first()
+                if provider:
+                    # Construct path to provider image
+                    image_filename = f"providers/{provider.token}/products/{provider_product.image_filename}"
+        
+        products_list.append({
+            "id": tp.id,
+            "name": tp.name,
+            "price_cents": tp.price_cents,
+            "image_filename": image_filename,
+            "tenant_id": tp.tenant_id,
+            "ingredients": tp.ingredients,
+        })
+    
+    # Add legacy Products (for backward compatibility)
+    for p in legacy_products:
+        products_list.append({
+            "id": p.id,
+            "name": p.name,
+            "price_cents": p.price_cents,
+            "image_filename": p.image_filename,
+            "tenant_id": p.tenant_id,
+            "ingredients": p.ingredients,
+        })
     
     return {
         "table_name": table.name,
@@ -756,17 +1279,7 @@ def get_menu(
         "tenant_website": tenant.website if tenant else None,
         "tenant_currency": tenant.currency if tenant else None,
         "tenant_stripe_publishable_key": tenant.stripe_publishable_key if tenant else None,
-        "products": [
-            {
-                "id": p.id,
-                "name": p.name,
-                "price_cents": p.price_cents,
-                "image_filename": p.image_filename,
-                "tenant_id": p.tenant_id,
-                "ingredients": p.ingredients,
-            }
-            for p in products
-        ],
+        "products": products_list,
     }
 
 

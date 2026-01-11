@@ -45,6 +45,13 @@ import { environment } from '../../environments/environment';
             </svg>
             <span>Products</span>
           </a>
+          <a routerLink="/catalog" routerLinkActive="active" class="nav-link" (click)="closeSidebar()">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 19.5A2.5 2.5 0 016.5 17H20"/>
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/>
+            </svg>
+            <span>Catalog</span>
+          </a>
           <a routerLink="/tables" routerLinkActive="active" class="nav-link" (click)="closeSidebar()">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="3" y="3" width="7" height="7"/>

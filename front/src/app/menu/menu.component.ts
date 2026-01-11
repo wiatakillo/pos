@@ -755,7 +755,14 @@ export class MenuComponent implements OnInit {
 
   getProductImageUrl(product: Product): string | null {
     if (!product.image_filename || !product.tenant_id) return null;
-    return `${environment.apiUrl}/uploads/${product.tenant_id}/products/${product.image_filename}`;
+    // Handle both legacy product images and provider product images
+    if (product.image_filename.startsWith('providers/')) {
+      // Provider product image path
+      return `${environment.apiUrl}/uploads/${product.image_filename}`;
+    } else {
+      // Legacy tenant product image path
+      return `${environment.apiUrl}/uploads/${product.tenant_id}/products/${product.image_filename}`;
+    }
   }
 
   toggleIngredients(productId: number) {
