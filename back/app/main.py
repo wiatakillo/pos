@@ -764,12 +764,19 @@ async def list_catalog(
                 select(models.Provider).where(models.Provider.id == pp.provider_id)
             ).first()
             if provider:
+                # Construct image URL - prefer local image if available
+                image_url = None
+                if pp.image_filename:
+                    image_url = f"/uploads/providers/{provider.id}/products/{pp.image_filename}"
+                elif pp.image_url:
+                    image_url = pp.image_url
+                
                 providers_data.append({
                     "provider_id": provider.id,
                     "provider_name": provider.name,
                     "provider_product_id": pp.id,
                     "price_cents": pp.price_cents,
-                    "image_url": pp.image_url,
+                    "image_url": image_url,
                     "country": pp.country,
                     "region": pp.region,
                     "grape_variety": pp.grape_variety,

@@ -454,14 +454,35 @@ def import_wines(clear_existing: bool = False) -> dict[str, int]:
         provider = get_or_create_provider(session, PROVIDER_NAME)
         
         if clear_existing:
-            # Delete existing provider products
+            # Delete existing provider products that are not referenced by tenant products
+            from sqlmodel import text
             existing = session.exec(
                 select(ProviderProduct).where(ProviderProduct.provider_id == provider.id)
             ).all()
+            
+            deleted_count = 0
             for pp in existing:
+                # Check if this provider product is referenced by any tenant product
+                referenced = session.exec(
+                    text("SELECT COUNT(*) FROM tenantproduct WHERE provider_product_id = :pp_id"),
+                    {"pp_id": pp.id}
+                ).first()
+                
+                if referenced and referenced[0] > 0:
+                    # Don't delete if referenced, just mark for update
+                    continue
+                
+                # Delete old image file if it exists
+                if pp.image_filename:
+                    old_path = UPLOADS_DIR / "providers" / str(provider.id) / "products" / pp.image_filename
+                    if old_path.exists():
+                        old_path.unlink()
+                
                 session.delete(pp)
+                deleted_count += 1
+            
             session.commit()
-            print(f"Deleted {len(existing)} existing provider products")
+            print(f"Deleted {deleted_count} existing provider products (kept {len(existing) - deleted_count} that are in use)")
         
         # Fetch wines from API
         print(f"Fetching wines from {PROVIDER_NAME}...")
