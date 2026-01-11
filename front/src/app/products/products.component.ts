@@ -1,80 +1,15 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
-import { DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink, RouterLinkActive } from '@angular/router';
-import { ApiService, Product, User } from '../services/api.service';
+import { Router } from '@angular/router';
+import { ApiService, Product } from '../services/api.service';
+import { SidebarComponent } from '../shared/sidebar.component';
 
 @Component({
   selector: 'app-products',
   standalone: true,
-  imports: [FormsModule, DecimalPipe, RouterLink, RouterLinkActive],
+  imports: [FormsModule, SidebarComponent],
   template: `
-    <div class="layout" [class.sidebar-open]="sidebarOpen()">
-      <header class="mobile-header">
-        <button class="menu-toggle" (click)="toggleSidebar()">
-          <span></span><span></span><span></span>
-        </button>
-        <span class="header-title">POS</span>
-      </header>
-
-      <aside class="sidebar">
-        <div class="sidebar-header">
-          <span class="logo">POS</span>
-          <button class="close-btn" (click)="closeSidebar()">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M18 6L6 18M6 6l12 12"/>
-            </svg>
-          </button>
-        </div>
-        
-        <nav class="nav">
-          <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}" class="nav-link" (click)="closeSidebar()">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
-            </svg>
-            <span>Home</span>
-          </a>
-          <a routerLink="/products" routerLinkActive="active" class="nav-link" (click)="closeSidebar()">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/>
-            </svg>
-            <span>Products</span>
-          </a>
-          <a routerLink="/tables" routerLinkActive="active" class="nav-link" (click)="closeSidebar()">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-              <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
-            </svg>
-            <span>Tables</span>
-          </a>
-          <a routerLink="/orders" routerLinkActive="active" class="nav-link" (click)="closeSidebar()">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-              <polyline points="14,2 14,8 20,8"/>
-            </svg>
-            <span>Orders</span>
-          </a>
-        </nav>
-
-        <div class="sidebar-footer">
-          @if (user()) {
-            <div class="user-info">
-              <span class="user-email">{{ user()?.email }}</span>
-            </div>
-          }
-          <button class="logout-btn" (click)="logout()">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
-              <polyline points="16,17 21,12 16,7"/><line x1="21" y1="12" x2="9" y2="12"/>
-            </svg>
-            <span>Sign out</span>
-          </button>
-        </div>
-      </aside>
-
-      <div class="overlay" (click)="closeSidebar()"></div>
-
-      <main class="main">
+    <app-sidebar>
         <div class="page-header">
           <h1>Products</h1>
           @if (!showAddForm() && !editingProduct()) {
@@ -107,7 +42,7 @@ import { ApiService, Product, User } from '../services/api.service';
                   <div class="form-group form-group-sm">
                     <label for="price">Price</label>
                     <div class="price-input">
-                      <span class="currency">$</span>
+                      <span class="currency">{{ currency() }}</span>
                       <input id="price" type="number" step="0.01" [(ngModel)]="formData.price" name="price" required placeholder="0.00">
                     </div>
                   </div>
@@ -120,9 +55,19 @@ import { ApiService, Product, User } from '../services/api.service';
                   <label>Product Image</label>
                   <div class="image-upload-row">
                     @if (editingProduct()?.image_filename) {
-                      <img [src]="getImageUrl(editingProduct()!)" class="product-thumb" alt="">
+                      <div class="image-preview-wrapper">
+                        <img [src]="getImageUrl(editingProduct()!)" class="product-thumb" alt="">
+                        @if (editingProduct()?.image_size_formatted) {
+                          <div class="file-size">{{ editingProduct()!.image_size_formatted }}</div>
+                        }
+                      </div>
                     } @else if (pendingImagePreview()) {
-                      <img [src]="pendingImagePreview()" class="product-thumb" alt="">
+                      <div class="image-preview-wrapper">
+                        <img [src]="pendingImagePreview()" class="product-thumb" alt="">
+                        @if (pendingImageFile()?.size) {
+                          <div class="file-size">{{ formatFileSize(pendingImageFile()!.size) }}</div>
+                        }
+                      </div>
                     }
                     <input type="file" #fileInput accept="image/jpeg,image/png,image/webp" (change)="handleImageSelect($event)" style="display:none">
                     <button type="button" class="btn btn-secondary" (click)="fileInput.click()" [disabled]="uploading()">
@@ -185,7 +130,12 @@ import { ApiService, Product, User } from '../services/api.service';
                     <tr>
                       <td>
                         @if (product.image_filename) {
-                          <img [src]="getImageUrl(product)" class="table-thumb" alt="">
+                          <div class="image-preview-wrapper">
+                            <img [src]="getImageUrl(product)" class="table-thumb" alt="">
+                            @if (product.image_size_formatted) {
+                              <div class="file-size">{{ product.image_size_formatted }}</div>
+                            }
+                          </div>
                         } @else {
                           <div class="no-image"></div>
                         }
@@ -196,7 +146,7 @@ import { ApiService, Product, User } from '../services/api.service';
                           <small class="ingredients">{{ product.ingredients }}</small>
                         }
                       </td>
-                      <td class="price">\${{ (product.price_cents / 100) | number:'1.2-2' }}</td>
+                      <td class="price">{{ formatPrice(product.price_cents) }}</td>
                       <td class="actions">
                         <button class="icon-btn" (click)="startEdit(product)" title="Edit">
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -230,8 +180,7 @@ import { ApiService, Product, User } from '../services/api.service';
             </div>
           }
         </div>
-      </main>
-    </div>
+    </app-sidebar>
   `,
   styles: [`
     .layout { display: flex; min-height: 100vh; background: var(--color-bg); }
@@ -409,9 +358,11 @@ import { ApiService, Product, User } from '../services/api.service';
     .actions { display: flex; gap: var(--space-2); justify-content: flex-end; }
 
     .image-upload-row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+    .image-preview-wrapper { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); }
     .product-thumb { width: 60px; height: 60px; object-fit: cover; border-radius: var(--radius-md); border: 1px solid var(--color-border); }
     .table-thumb { width: 48px; height: 48px; object-fit: cover; border-radius: var(--radius-sm); }
     .no-image { width: 48px; height: 48px; background: var(--color-bg); border-radius: var(--radius-sm); border: 1px dashed var(--color-border); }
+    .file-size { font-size: 0.6875rem; color: var(--color-text-muted); text-align: center; }
     .pending-file-name { font-size: 0.8125rem; color: var(--color-text-muted); font-style: italic; }
     .ingredients { color: var(--color-text-muted); font-size: 0.8125rem; display: block; margin-top: 2px; }
 
@@ -516,22 +467,33 @@ export class ProductsComponent implements OnInit {
   editingProduct = signal<Product | null>(null);
   productToDelete = signal<Product | null>(null);
   error = signal('');
-  user = signal<User | null>(null);
-  sidebarOpen = signal(false);
-
   formData = { name: '', price: 0, ingredients: '' };
   uploading = signal(false);
   pendingImageFile = signal<File | null>(null);
   pendingImagePreview = signal<string | null>(null);
+  currency = signal<string>('$');
 
   ngOnInit() {
-    this.api.user$.subscribe(user => this.user.set(user));
+    this.loadTenantSettings();
     this.loadProducts();
   }
 
-  toggleSidebar() { this.sidebarOpen.update(v => !v); }
-  closeSidebar() { this.sidebarOpen.set(false); }
-  logout() { this.api.logout(); this.router.navigate(['/login']); }
+  loadTenantSettings() {
+    this.api.getTenantSettings().subscribe({
+      next: (settings) => {
+        this.currency.set(settings.currency || '$');
+      },
+      error: (err) => {
+        console.error('Failed to load tenant settings:', err);
+        // Default to $ if settings can't be loaded
+      }
+    });
+  }
+
+  formatPrice(priceCents: number): string {
+    const currencySymbol = this.currency();
+    return `${currencySymbol}${(priceCents / 100).toFixed(2)}`;
+  }
 
   loadProducts() {
     this.loading.set(true);
@@ -625,6 +587,16 @@ export class ProductsComponent implements OnInit {
 
   getImageUrl(product: Product): string | null {
     return this.api.getProductImageUrl(product);
+  }
+
+  formatFileSize(bytes: number): string {
+    if (bytes < 1024) {
+      return `${bytes} B`;
+    } else if (bytes < 1024 * 1024) {
+      return `${(bytes / 1024).toFixed(1)} KB`;
+    } else {
+      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    }
   }
 
   handleImageSelect(event: Event) {

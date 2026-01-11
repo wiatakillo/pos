@@ -1,10 +1,13 @@
 import json
+import logging
 import os
 from datetime import timedelta
+from io import BytesIO
 from pathlib import Path
 from typing import Annotated
 from uuid import uuid4
 
+from PIL import Image
 import redis
 import stripe
 from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, status
@@ -17,15 +20,94 @@ from . import models, security
 from .db import check_db_connection, create_db_and_tables, get_session
 from .settings import settings
 
-# Configure Stripe
-stripe.api_key = settings.stripe_secret_key
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Configure Stripe (global fallback - will be overridden by tenant-specific keys)
+# Note: stripe.api_key is set globally but individual API calls use api_key parameter
+stripe.api_key = settings.stripe_secret_key or ""
+
+def _get_stripe_currency_code(currency_symbol: str | None) -> str | None:
+    """
+    Map currency symbol to Stripe currency code.
+    Returns None if symbol is not recognized.
+    """
+    if not currency_symbol:
+        return None
+    
+    # Common currency symbol to Stripe currency code mapping
+    currency_map = {
+        '€': 'eur',
+        '$': 'usd',
+        '£': 'gbp',
+        '¥': 'jpy',
+        '₹': 'inr',
+        '₽': 'rub',
+        '₩': 'krw',
+        '₨': 'pkr',
+        '₦': 'ngn',
+        '₴': 'uah',
+        '₫': 'vnd',
+        '₪': 'ils',
+        '₡': 'crc',
+        '₱': 'php',
+        '₨': 'lkr',
+        '₦': 'ngn',
+        '₨': 'npr',
+        '₨': 'mru',
+        'MXN': 'mxn',
+        'mxn': 'mxn',
+        'EUR': 'eur',
+        'eur': 'eur',
+        'USD': 'usd',
+        'usd': 'usd',
+        'GBP': 'gbp',
+        'gbp': 'gbp',
+    }
+    
+    # Try direct lookup
+    if currency_symbol in currency_map:
+        return currency_map[currency_symbol]
+    
+    # Try case-insensitive lookup for 3-letter codes
+    currency_upper = currency_symbol.upper()
+    if currency_upper in currency_map:
+        return currency_map[currency_upper]
+    
+    # If it's already a 3-letter code, return as-is (Stripe will validate)
+    if len(currency_symbol) == 3:
+        return currency_symbol.lower()
+    
+    return None
 
 
-app = FastAPI(title="POS API")
+app = FastAPI(
+    title="POS API",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    swagger_ui_parameters={
+        "faviconUrl": "/favicon.ico"
+    }
+)
+
+# Parse CORS origins from environment (comma-separated)
+cors_origins_list = [
+    origin.strip() 
+    for origin in settings.cors_origins.split(",") 
+    if origin.strip()
+]
+# Add wildcard for public menu access if not already present
+if "*" not in cors_origins_list:
+    cors_origins_list.append("*")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:4200", "*"],  # Allow public menu access
+    allow_origins=cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -37,8 +119,124 @@ UPLOADS_DIR.mkdir(exist_ok=True)
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_IMAGE_SIZE = 2 * 1024 * 1024  # 2MB
 
+# Image optimization settings
+MAX_IMAGE_WIDTH = 1920  # Maximum width in pixels
+MAX_IMAGE_HEIGHT = 1920  # Maximum height in pixels
+JPEG_QUALITY = 85  # JPEG quality (1-100, 85 is a good balance)
+PNG_OPTIMIZE = True  # Enable PNG optimization
+WEBP_QUALITY = 85  # WebP quality (1-100)
+
+# Static files directory for favicon and other assets
+STATIC_DIR = Path(__file__).parent.parent
+STATIC_DIR.mkdir(exist_ok=True)
+
 # Mount static files for serving images
 app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
+
+
+# ============ IMAGE OPTIMIZATION ============
+
+def get_file_size(file_path: Path) -> int | None:
+    """Get file size in bytes. Returns None if file doesn't exist."""
+    try:
+        if file_path.exists():
+            return file_path.stat().st_size
+    except Exception:
+        pass
+    return None
+
+def format_file_size(size_bytes: int | None) -> str:
+    """Format file size in human-readable format."""
+    if size_bytes is None:
+        return "Unknown"
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    elif size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f} KB"
+    else:
+        return f"{size_bytes / (1024 * 1024):.1f} MB"
+
+def optimize_image(image_data: bytes, content_type: str) -> bytes:
+    """
+    Optimize image locally using Pillow.
+    - Resizes if too large
+    - Compresses JPEG/WebP with quality settings
+    - Optimizes PNG files
+    Returns optimized image data.
+    """
+    try:
+        # Open image from bytes
+        image = Image.open(BytesIO(image_data))
+        original_format = image.format
+        original_size = len(image_data)
+        
+        # Convert RGBA to RGB for JPEG (JPEG doesn't support transparency)
+        if (content_type == "image/jpeg" or original_format == "JPEG") and image.mode in ("RGBA", "LA", "P"):
+            # Create white background
+            background = Image.new("RGB", image.size, (255, 255, 255))
+            if image.mode == "P":
+                image = image.convert("RGBA")
+            background.paste(image, mask=image.split()[-1] if image.mode == "RGBA" else None)
+            image = background
+        elif image.mode not in ("RGB", "L"):
+            image = image.convert("RGB")
+        
+        # Resize if image is too large
+        width, height = image.size
+        if width > MAX_IMAGE_WIDTH or height > MAX_IMAGE_HEIGHT:
+            # Calculate new dimensions maintaining aspect ratio
+            ratio = min(MAX_IMAGE_WIDTH / width, MAX_IMAGE_HEIGHT / height)
+            new_width = int(width * ratio)
+            new_height = int(height * ratio)
+            image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            logger.info(f"Image resized: {width}x{height} -> {new_width}x{new_height}")
+        
+        # Save optimized image to bytes
+        output = BytesIO()
+        
+        if content_type == "image/jpeg" or original_format == "JPEG":
+            image.save(output, format="JPEG", quality=JPEG_QUALITY, optimize=True)
+        elif content_type == "image/webp" or original_format == "WEBP":
+            image.save(output, format="WEBP", quality=WEBP_QUALITY, method=6)
+        elif content_type == "image/png" or original_format == "PNG":
+            # PNG optimization
+            image.save(output, format="PNG", optimize=PNG_OPTIMIZE)
+        else:
+            # Default to JPEG
+            image.save(output, format="JPEG", quality=JPEG_QUALITY, optimize=True)
+        
+        optimized_data = output.getvalue()
+        optimized_size = len(optimized_data)
+        reduction = ((original_size - optimized_size) / original_size) * 100
+        
+        logger.info(
+            f"Image optimized: {original_size / 1024:.1f}KB -> "
+            f"{optimized_size / 1024:.1f}KB ({reduction:.1f}% reduction)"
+        )
+        
+        return optimized_data
+        
+    except Exception as e:
+        logger.warning(f"Error optimizing image: {e}, using original image")
+        return image_data
+
+# Serve favicon for API docs (blue icon to distinguish from frontend)
+@app.get("/favicon.ico", include_in_schema=False)
+@app.head("/favicon.ico", include_in_schema=False)
+async def favicon():
+    from fastapi.responses import FileResponse, Response
+    favicon_path = STATIC_DIR / "favicon.svg"
+    if favicon_path.exists():
+        response = FileResponse(
+            str(favicon_path), 
+            media_type="image/svg+xml",
+            headers={
+                "Cache-Control": "public, max-age=3600",
+                "X-Favicon-Source": "backend"
+            }
+        )
+        return response
+    raise HTTPException(status_code=404)
 
 # Redis client for pub/sub
 redis_client: redis.Redis | None = None
@@ -68,7 +266,19 @@ def publish_order_update(tenant_id: int, order_data: dict) -> None:
 
 @app.on_event("startup")
 def on_startup() -> None:
+    logger.info("Starting application...")
     create_db_and_tables()
+    # Run database migrations
+    try:
+        from .migrate import MigrationRunner
+        from pathlib import Path
+        migrations_dir = Path(__file__).parent.parent / "migrations"
+        runner = MigrationRunner(migrations_dir)
+        db_version = runner.run_migrations()
+        logger.info(f"Database schema version: {db_version}")
+    except Exception as e:
+        # Log but don't fail startup - migrations can be run manually
+        logger.warning(f"Migration check failed: {e}", exc_info=True)
 
 
 @app.get("/health")
@@ -77,9 +287,28 @@ def health() -> dict:
 
 
 @app.get("/health/db")
-def health_db() -> dict:
-    check_db_connection()
-    return {"status": "ok"}
+def health_db(session: Session = Depends(get_session)) -> dict:
+    """Check database connection and version."""
+    try:
+        check_db_connection()
+        
+        # Get database schema version
+        try:
+            from .migrate import MigrationRunner
+            from pathlib import Path
+            migrations_dir = Path(__file__).parent.parent / "migrations"
+            runner = MigrationRunner(migrations_dir)
+            db_version = runner.get_current_version(session)
+        except Exception:
+            db_version = None
+        
+        return {
+            "status": "ok",
+            "database": "connected",
+            "schema_version": db_version
+        }
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Database error: {e}")
 
 
 # ============ AUTH ============
@@ -134,6 +363,176 @@ def login_for_access_token(
         expires_delta=security.timedelta(minutes=settings.access_token_expire_minutes)
     )
     return {"access_token": access_token, "token_type": "bearer"}
+
+
+# ============ TENANT SETTINGS ============
+
+@app.get("/tenant/settings")
+def get_tenant_settings(
+    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    session: Session = Depends(get_session)
+) -> dict:
+    """Get tenant/business profile settings."""
+    tenant = session.exec(
+        select(models.Tenant).where(models.Tenant.id == current_user.tenant_id)
+    ).first()
+    
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    
+    # Get logo file size if exists
+    logo_size = None
+    if tenant.logo_filename:
+        logo_path = UPLOADS_DIR / str(current_user.tenant_id) / "logo" / tenant.logo_filename
+        logo_size = get_file_size(logo_path)
+    
+    # Convert tenant to dict and add file size
+    tenant_dict = tenant.model_dump()
+    tenant_dict["logo_size_bytes"] = logo_size
+    tenant_dict["logo_size_formatted"] = format_file_size(logo_size)
+    
+    # Don't expose full secret key - only show last 4 characters for verification
+    if tenant_dict.get("stripe_secret_key"):
+        secret_key = tenant_dict["stripe_secret_key"]
+        tenant_dict["stripe_secret_key"] = f"{secret_key[:7]}...{secret_key[-4:]}" if len(secret_key) > 11 else "***"
+    
+    return tenant_dict
+
+
+@app.put("/tenant/settings")
+def update_tenant_settings(
+    tenant_update: models.TenantUpdate,
+    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    session: Session = Depends(get_session)
+) -> dict:
+    """Update tenant/business profile settings."""
+    tenant = session.exec(
+        select(models.Tenant).where(models.Tenant.id == current_user.tenant_id)
+    ).first()
+    
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    
+    # Update fields if provided (convert empty strings to None)
+    if tenant_update.name is not None:
+        tenant.name = tenant_update.name.strip() if isinstance(tenant_update.name, str) else tenant_update.name
+    if tenant_update.business_type is not None:
+        tenant.business_type = tenant_update.business_type if tenant_update.business_type else None
+    if tenant_update.description is not None:
+        tenant.description = tenant_update.description.strip() if tenant_update.description else None
+    if tenant_update.phone is not None:
+        tenant.phone = tenant_update.phone.strip() if tenant_update.phone else None
+    if tenant_update.whatsapp is not None:
+        tenant.whatsapp = tenant_update.whatsapp.strip() if tenant_update.whatsapp else None
+    if tenant_update.email is not None:
+        tenant.email = tenant_update.email.strip() if tenant_update.email else None
+    if tenant_update.address is not None:
+        tenant.address = tenant_update.address.strip() if tenant_update.address else None
+    if tenant_update.website is not None:
+        tenant.website = tenant_update.website.strip() if tenant_update.website else None
+    if tenant_update.opening_hours is not None:
+        tenant.opening_hours = tenant_update.opening_hours.strip() if tenant_update.opening_hours else None
+    if tenant_update.immediate_payment_required is not None:
+        tenant.immediate_payment_required = tenant_update.immediate_payment_required
+    if tenant_update.currency is not None:
+        tenant.currency = tenant_update.currency.strip() if isinstance(tenant_update.currency, str) and tenant_update.currency.strip() else None
+    if tenant_update.stripe_secret_key is not None:
+        # Only update if a non-empty value is provided
+        # Empty string or None means don't change the existing value
+        if tenant_update.stripe_secret_key and isinstance(tenant_update.stripe_secret_key, str) and tenant_update.stripe_secret_key.strip():
+            tenant.stripe_secret_key = tenant_update.stripe_secret_key.strip()
+        # If empty/None, we don't update (keep existing value)
+    if tenant_update.stripe_publishable_key is not None:
+        tenant.stripe_publishable_key = tenant_update.stripe_publishable_key.strip() if isinstance(tenant_update.stripe_publishable_key, str) and tenant_update.stripe_publishable_key.strip() else None
+    
+    session.add(tenant)
+    session.commit()
+    session.refresh(tenant)
+    
+    # Get logo file size if exists
+    logo_size = None
+    if tenant.logo_filename:
+        logo_path = UPLOADS_DIR / str(current_user.tenant_id) / "logo" / tenant.logo_filename
+        logo_size = get_file_size(logo_path)
+    
+    # Convert tenant to dict and add file size
+    tenant_dict = tenant.model_dump()
+    tenant_dict["logo_size_bytes"] = logo_size
+    tenant_dict["logo_size_formatted"] = format_file_size(logo_size)
+    
+    # Don't expose full secret key - only show last 4 characters for verification
+    if tenant_dict.get("stripe_secret_key"):
+        secret_key = tenant_dict["stripe_secret_key"]
+        tenant_dict["stripe_secret_key"] = f"{secret_key[:7]}...{secret_key[-4:]}" if len(secret_key) > 11 else "***"
+    
+    return tenant_dict
+
+
+@app.post("/tenant/logo")
+async def upload_tenant_logo(
+    file: Annotated[UploadFile, File()],
+    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    session: Session = Depends(get_session)
+) -> models.Tenant:
+    """Upload a logo for the tenant/business."""
+    tenant = session.exec(
+        select(models.Tenant).where(models.Tenant.id == current_user.tenant_id)
+    ).first()
+    
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    
+    # Validate content type
+    if file.content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid file type. Allowed: {', '.join(ALLOWED_IMAGE_TYPES)}"
+        )
+    
+    # Read file and check size
+    contents = await file.read()
+    if len(contents) > MAX_IMAGE_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File too large. Max size: {MAX_IMAGE_SIZE // (1024*1024)}MB"
+        )
+    
+    # Optimize image locally
+    contents = optimize_image(contents, file.content_type)
+    
+    # Create tenant logo directory
+    tenant_dir = UPLOADS_DIR / str(current_user.tenant_id) / "logo"
+    tenant_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Delete old logo if exists
+    if tenant.logo_filename:
+        old_path = tenant_dir / tenant.logo_filename
+        if old_path.exists():
+            old_path.unlink()
+    
+    # Generate unique filename
+    ext = Path(file.filename or "logo.jpg").suffix.lower()
+    if ext not in [".jpg", ".jpeg", ".png", ".webp"]:
+        ext = ".jpg"
+    new_filename = f"{uuid4()}{ext}"
+    
+    # Save file
+    file_path = tenant_dir / new_filename
+    file_path.write_bytes(contents)
+    
+    # Update tenant
+    tenant.logo_filename = new_filename
+    session.add(tenant)
+    session.commit()
+    session.refresh(tenant)
+    
+    # Get file size for response
+    logo_size = get_file_size(file_path)
+    tenant_dict = tenant.model_dump()
+    tenant_dict["logo_size_bytes"] = logo_size
+    tenant_dict["logo_size_formatted"] = format_file_size(logo_size)
+    
+    return tenant_dict
 
 
 # ============ PRODUCTS ============
@@ -243,6 +642,9 @@ async def upload_product_image(
             detail=f"File too large. Max size: {MAX_IMAGE_SIZE // (1024*1024)}MB"
         )
     
+    # Optimize image locally
+    contents = optimize_image(contents, file.content_type)
+    
     # Create tenant upload directory
     tenant_dir = UPLOADS_DIR / str(current_user.tenant_id) / "products"
     tenant_dir.mkdir(parents=True, exist_ok=True)
@@ -269,7 +671,13 @@ async def upload_product_image(
     session.commit()
     session.refresh(product)
     
-    return product
+    # Get file size for response
+    image_size = get_file_size(file_path)
+    product_dict = product.model_dump()
+    product_dict["image_size_bytes"] = image_size
+    product_dict["image_size_formatted"] = format_file_size(image_size)
+    
+    return product_dict
 
 
 # ============ TABLES ============
@@ -340,6 +748,14 @@ def get_menu(
         "table_id": table.id,
         "tenant_id": table.tenant_id,  # For WebSocket connection
         "tenant_name": tenant.name if tenant else "Unknown",
+        "tenant_logo": tenant.logo_filename if tenant else None,
+        "tenant_description": tenant.description if tenant else None,
+        "tenant_phone": tenant.phone if tenant else None,
+        "tenant_whatsapp": tenant.whatsapp if tenant else None,
+        "tenant_address": tenant.address if tenant else None,
+        "tenant_website": tenant.website if tenant else None,
+        "tenant_currency": tenant.currency if tenant else None,
+        "tenant_stripe_publishable_key": tenant.stripe_publishable_key if tenant else None,
         "products": [
             {
                 "id": p.id,
@@ -648,19 +1064,34 @@ def create_payment_intent(
     if total_cents <= 0:
         raise HTTPException(status_code=400, detail="Order has no items")
     
-    # Get tenant for description
+    # Get tenant for description, currency, and Stripe keys
     tenant = session.exec(select(models.Tenant).where(models.Tenant.id == order.tenant_id)).first()
     
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    
+    # Use tenant-specific Stripe keys, fallback to global config
+    stripe_secret_key = tenant.stripe_secret_key or settings.stripe_secret_key
+    if not stripe_secret_key:
+        raise HTTPException(status_code=400, detail="Stripe not configured for this tenant")
+    
+    # Map currency symbol to Stripe currency code
+    # Default to settings.stripe_currency if tenant currency is not set
+    currency_symbol = tenant.currency if tenant.currency else None
+    stripe_currency = _get_stripe_currency_code(currency_symbol) or settings.stripe_currency
+    
     try:
+        # Use tenant-specific Stripe key
         intent = stripe.PaymentIntent.create(
             amount=total_cents,
-            currency=settings.stripe_currency,
+            currency=stripe_currency,
+            api_key=stripe_secret_key,
             metadata={
                 "order_id": str(order.id),
                 "table_id": str(table.id),
                 "tenant_id": str(order.tenant_id)
             },
-            description=f"Order #{order.id} at {tenant.name if tenant else 'POS'} - {table.name}"
+            description=f"Order #{order.id} at {tenant.name} - {table.name}"
         )
         
         return {
@@ -695,9 +1126,19 @@ def confirm_payment(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     
+    # Get tenant for Stripe keys
+    tenant = session.exec(select(models.Tenant).where(models.Tenant.id == order.tenant_id)).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    
+    # Use tenant-specific Stripe keys, fallback to global config
+    stripe_secret_key = tenant.stripe_secret_key or settings.stripe_secret_key
+    if not stripe_secret_key:
+        raise HTTPException(status_code=400, detail="Stripe not configured for this tenant")
+    
     # Verify payment with Stripe
     try:
-        intent = stripe.PaymentIntent.retrieve(payment_intent_id)
+        intent = stripe.PaymentIntent.retrieve(payment_intent_id, api_key=stripe_secret_key)
         if intent.status != "succeeded":
             raise HTTPException(status_code=400, detail="Payment not completed")
         

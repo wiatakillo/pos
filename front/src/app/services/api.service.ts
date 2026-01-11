@@ -1,6 +1,7 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable, BehaviorSubject, tap, Subject } from 'rxjs';
+import { environment } from '../../environments/environment';
 
 // Interfaces
 export interface User {
@@ -26,6 +27,8 @@ export interface Product {
   tenant_id?: number;
   image_filename?: string;
   ingredients?: string;
+  image_size_bytes?: number | null;
+  image_size_formatted?: string | null;
 }
 
 export interface Table {
@@ -58,7 +61,35 @@ export interface MenuResponse {
   table_id: number;
   tenant_id: number;
   tenant_name: string;
+  tenant_logo?: string | null;
+  tenant_description?: string | null;
+  tenant_phone?: string | null;
+  tenant_whatsapp?: string | null;
+  tenant_address?: string | null;
+  tenant_website?: string | null;
+  tenant_currency?: string | null;
+  tenant_stripe_publishable_key?: string | null;
   products: Product[];
+}
+
+export interface TenantSettings {
+  id?: number;
+  name: string;
+  business_type?: string | null;
+  description?: string | null;
+  phone?: string | null;
+  whatsapp?: string | null;
+  email?: string | null;
+  address?: string | null;
+  website?: string | null;
+  logo_filename?: string | null;
+  opening_hours?: string | null;
+  immediate_payment_required?: boolean;
+  currency?: string | null;
+  stripe_secret_key?: string | null;
+  stripe_publishable_key?: string | null;
+  logo_size_bytes?: number | null;
+  logo_size_formatted?: string | null;
 }
 
 export interface OrderItemCreate {
@@ -77,8 +108,8 @@ export interface OrderCreate {
 })
 export class ApiService {
   private http = inject(HttpClient);
-  private apiUrl = 'http://192.168.1.98:8020';
-  private wsUrl = 'ws://192.168.1.98:8021';
+  private apiUrl = environment.apiUrl;
+  private wsUrl = environment.wsUrl;
 
   private tokenKey = 'pos_token';
   private userSubject = new BehaviorSubject<User | null>(null);
@@ -98,6 +129,13 @@ export class ApiService {
       if (token) {
         try {
           const payload = JSON.parse(atob(token.split('.')[1]));
+          // Check if token is expired
+          const exp = payload.exp;
+          if (exp && exp * 1000 < Date.now()) {
+            // Token expired, clear it
+            this.logout();
+            return;
+          }
           this.userSubject.next({
             email: payload.sub,
             tenant_id: payload.tenant_id
@@ -225,8 +263,49 @@ export class ApiService {
     );
   }
 
+  private tenantStripeKey = signal<string | null>(null);
+
   getStripePublishableKey(): string {
-    return 'pk_test_51SjyYeC5b7HsHF8lLQmByWhJbPSroVBO2Q39x64b8QD4ixNlBolibtxXTHCk9ZFQe1vS0ZPXBYj4HvbNmFESLSsC00bd6v2sOS';
+    // Use tenant-specific key if available, otherwise fallback to environment
+    return this.tenantStripeKey() || environment.stripePublishableKey || '';
+  }
+
+  setTenantStripeKey(key: string | null): void {
+    this.tenantStripeKey.set(key);
+  }
+
+  loadTenantStripeKey(): void {
+    // Load tenant settings to get Stripe publishable key
+    this.getTenantSettings().subscribe({
+      next: (settings) => {
+        this.tenantStripeKey.set(settings.stripe_publishable_key || null);
+      },
+      error: (err) => {
+        console.error('Failed to load tenant Stripe key:', err);
+        // Fallback to environment key
+        this.tenantStripeKey.set(null);
+      }
+    });
+  }
+
+  // Tenant Settings
+  getTenantSettings(): Observable<TenantSettings> {
+    return this.http.get<TenantSettings>(`${this.apiUrl}/tenant/settings`);
+  }
+
+  updateTenantSettings(settings: Partial<TenantSettings>): Observable<TenantSettings> {
+    return this.http.put<TenantSettings>(`${this.apiUrl}/tenant/settings`, settings);
+  }
+
+  uploadTenantLogo(file: File): Observable<TenantSettings> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.http.post<TenantSettings>(`${this.apiUrl}/tenant/logo`, formData);
+  }
+
+  getTenantLogoUrl(logoFilename: string | null | undefined, tenantId: number | null | undefined): string | null {
+    if (!logoFilename || !tenantId) return null;
+    return `${this.apiUrl}/uploads/${tenantId}/logo/${logoFilename}`;
   }
 
   // WebSocket for real-time updates

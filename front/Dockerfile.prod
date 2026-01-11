@@ -1,0 +1,35 @@
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm ci
+
+# Copy source code
+COPY . .
+
+# Build the application for production (static output)
+RUN npm run build -- --configuration production-static
+
+# Production stage
+FROM nginx:alpine
+
+# Copy built files from builder
+# Angular 17+ outputs to dist/front/browser for static builds
+COPY --from=builder /app/dist/front/browser /usr/share/nginx/html
+
+# Copy entrypoint script
+COPY docker-entrypoint-prod.sh /docker-entrypoint-prod.sh
+RUN chmod +x /docker-entrypoint-prod.sh
+
+# Expose port
+EXPOSE 80
+
+# Use entrypoint to inject environment variables
+ENTRYPOINT ["/docker-entrypoint-prod.sh"]
+
+# Start nginx
+CMD ["nginx", "-g", "daemon off;"]

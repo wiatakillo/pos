@@ -1,8 +1,8 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
-import { DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { ApiService, Product, OrderItemCreate } from '../services/api.service';
+import { environment } from '../../environments/environment';
 
 interface CartItem {
   product: Product;
@@ -21,7 +21,7 @@ interface PlacedOrder {
 @Component({
   selector: 'app-menu',
   standalone: true,
-  imports: [DecimalPipe, FormsModule],
+  imports: [FormsModule],
   template: `
     <div class="menu-page">
       @if (loading()) {
@@ -36,8 +36,16 @@ interface PlacedOrder {
         </div>
       } @else {
         <header class="header">
-          <h1>{{ tenantName() }}</h1>
-          <span class="table-badge">{{ tableName() }}</span>
+          @if (tenantLogo()) {
+            <img [src]="tenantLogo()" alt="Business Logo" class="tenant-logo" />
+          }
+          <div class="header-content">
+            <h1>{{ tenantName() }}</h1>
+            @if (tenantDescription()) {
+              <p class="tenant-description">{{ tenantDescription() }}</p>
+            }
+            <span class="table-badge">{{ tableName() }}</span>
+          </div>
         </header>
 
         <main class="content">
@@ -60,14 +68,14 @@ interface PlacedOrder {
                     <div class="order-card">
                       <div class="order-meta">
                         <span>Order #{{ order.id }}</span>
-                        <span class="order-total">\${{ (order.total / 100) | number:'1.2-2' }}</span>
+                        <span class="order-total">{{ formatPrice(order.total) }}</span>
                       </div>
                       <div class="order-items">
                         @for (item of order.items; track item.product.id) {
                           <div class="order-item">
                             <span class="item-qty">{{ item.quantity }}x</span>
                             <span class="item-name">{{ item.product.name }}</span>
-                            <span class="item-price">\${{ (item.product.price_cents * item.quantity / 100) | number:'1.2-2' }}</span>
+                            <span class="item-price">{{ formatPrice(item.product.price_cents * item.quantity) }}</span>
                           </div>
                         }
                       </div>
@@ -113,7 +121,7 @@ interface PlacedOrder {
                     <div class="product-details">
                       <div class="product-main">
                         <h3>{{ product.name }}</h3>
-                        <span class="product-price">\${{ (product.price_cents / 100) | number:'1.2-2' }}</span>
+                        <span class="product-price">{{ formatPrice(product.price_cents) }}</span>
                       </div>
                       @if (product.ingredients) {
                         <button class="ingredients-toggle" (click)="toggleIngredients(product.id!); $event.stopPropagation()">
@@ -158,7 +166,7 @@ interface PlacedOrder {
                   <div class="cart-item-row">
                     <span class="cart-qty">{{ item.quantity }}x</span>
                     <span class="cart-name">{{ item.product.name }}</span>
-                    <span class="cart-price">\${{ (item.product.price_cents * item.quantity / 100) | number:'1.2-2' }}</span>
+                    <span class="cart-price">{{ formatPrice(item.product.price_cents * item.quantity) }}</span>
                   </div>
                   <div class="cart-controls">
                     <button class="qty-btn" (click)="decrementItem(item)">-</button>
@@ -171,7 +179,7 @@ interface PlacedOrder {
             <div class="cart-footer">
               <div class="cart-total">
                 <span>Total</span>
-                <span class="total-amount">\${{ (getTotal() / 100) | number:'1.2-2' }}</span>
+                <span class="total-amount">{{ formatPrice(getTotal()) }}</span>
               </div>
               <button class="submit-btn" (click)="submitOrder()" [disabled]="submitting()">
                 {{ submitting() ? 'Placing Order...' : (placedOrders().length > 0 ? 'Add to Order' : 'Place Order') }}
@@ -199,7 +207,7 @@ interface PlacedOrder {
               </div>
               <div class="modal-body">
                 <div class="payment-total">
-                  Total: <strong>\${{ (paymentAmount() / 100) | number:'1.2-2' }}</strong>
+                  Total: <strong>{{ formatPrice(paymentAmount()) }}</strong>
                 </div>
                 <div id="card-element" class="card-element"></div>
                 @if (cardError()) {
@@ -261,9 +269,37 @@ interface PlacedOrder {
       padding: 24px 16px;
       text-align: center;
       color: white;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-3);
     }
 
-    .header h1 { font-size: 1.375rem; font-weight: 600; margin: 0 0 8px; }
+    .tenant-logo {
+      max-width: 120px;
+      max-height: 120px;
+      width: auto;
+      height: auto;
+      object-fit: contain;
+      background: white;
+      border-radius: var(--radius-md);
+      padding: var(--space-2);
+    }
+
+    .header-content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .header h1 { font-size: 1.375rem; font-weight: 600; margin: 0; }
+    .tenant-description {
+      font-size: 0.875rem;
+      opacity: 0.9;
+      margin: 0;
+      max-width: 500px;
+    }
     .table-badge { font-size: 0.875rem; opacity: 0.9; }
 
     .content { padding: 16px; max-width: 600px; margin: 0 auto; }
@@ -622,6 +658,13 @@ export class MenuComponent implements OnInit {
   products = signal<Product[]>([]);
   tenantName = signal('');
   tableName = signal('');
+  tenantLogo = signal<string | null>(null);
+  tenantDescription = signal<string | null>(null);
+  tenantPhone = signal<string | null>(null);
+  tenantWhatsapp = signal<string | null>(null);
+  tenantAddress = signal<string | null>(null);
+  tenantWebsite = signal<string | null>(null);
+  tenantCurrency = signal<string>('$');
   cart = signal<CartItem[]>([]);
   orderNotes = '';
   submitting = signal(false);
@@ -663,7 +706,8 @@ export class MenuComponent implements OnInit {
 
   connectWebSocket() {
     if (this.ws || this.tenantId === 0) return;
-    this.ws = new WebSocket(`ws://192.168.1.98:8021/ws/${this.tenantId}`);
+    const wsUrl = environment.wsUrl.replace(/^http/, 'ws').replace(/^https/, 'wss');
+    this.ws = new WebSocket(`${wsUrl}/ws/${this.tenantId}`);
     this.ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
@@ -683,6 +727,25 @@ export class MenuComponent implements OnInit {
         this.tenantName.set(data.tenant_name);
         this.tableName.set(data.table_name);
         this.tenantId = data.tenant_id;
+        
+        // Set tenant logo if available
+        if (data.tenant_logo && data.tenant_id) {
+          this.tenantLogo.set(`${environment.apiUrl}/uploads/${data.tenant_id}/logo/${data.tenant_logo}`);
+        }
+        
+        // Set additional tenant info
+        this.tenantDescription.set(data.tenant_description || null);
+        this.tenantPhone.set(data.tenant_phone || null);
+        this.tenantWhatsapp.set(data.tenant_whatsapp || null);
+        this.tenantAddress.set(data.tenant_address || null);
+        this.tenantWebsite.set(data.tenant_website || null);
+        this.tenantCurrency.set(data.tenant_currency || '$');
+        
+        // Set tenant Stripe publishable key for payments
+        if (data.tenant_stripe_publishable_key) {
+          this.api.setTenantStripeKey(data.tenant_stripe_publishable_key);
+        }
+        
         this.loading.set(false);
         this.connectWebSocket();
       },
@@ -692,7 +755,7 @@ export class MenuComponent implements OnInit {
 
   getProductImageUrl(product: Product): string | null {
     if (!product.image_filename || !product.tenant_id) return null;
-    return `http://192.168.1.98:8020/uploads/${product.tenant_id}/products/${product.image_filename}`;
+    return `${environment.apiUrl}/uploads/${product.tenant_id}/products/${product.image_filename}`;
   }
 
   toggleIngredients(productId: number) {
@@ -716,6 +779,10 @@ export class MenuComponent implements OnInit {
 
   getTotalItems(): number { return this.cart().reduce((sum, item) => sum + item.quantity, 0); }
   getTotal(): number { return this.cart().reduce((sum, item) => sum + item.product.price_cents * item.quantity, 0); }
+  formatPrice(priceCents: number): string {
+    const currencySymbol = this.tenantCurrency();
+    return `${currencySymbol}${(priceCents / 100).toFixed(2)}`;
+  }
 
   getStatusLabel(status: string): string {
     const labels: Record<string, string> = { pending: 'Pending', preparing: 'Preparing', ready: 'Ready', paid: 'Paid', completed: 'Done' };

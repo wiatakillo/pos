@@ -1,0 +1,17 @@
+services:
+  front:
+    build:
+      context: ./front
+      dockerfile: Dockerfile.prod
+    container_name: pos-front
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-4200}:80"
+    environment:
+      - API_URL=${API_URL:-http://localhost:8020}
+      - WS_URL=${WS_URL:-ws://localhost:8021}
+    depends_on:
+      - db
+      - redis
+      - ws-bridge
+      - back

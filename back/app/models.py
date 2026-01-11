@@ -13,10 +13,34 @@ class OrderStatus(str, Enum):
     completed = "completed"
 
 
+class BusinessType(str, Enum):
+    restaurant = "restaurant"
+    bar = "bar"
+    cafe = "cafe"
+    retail = "retail"
+    service = "service"
+    other = "other"
+
+
 class Tenant(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     name: str = Field(index=True)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
+    # Business Profile Fields
+    business_type: BusinessType | None = Field(default=None)
+    description: str | None = None
+    phone: str | None = None
+    whatsapp: str | None = None
+    email: str | None = None
+    address: str | None = None
+    website: str | None = None
+    logo_filename: str | None = None  # Stored in uploads/{tenant_id}/logo/
+    opening_hours: str | None = None  # JSON string: {"monday": {"open": "09:00", "close": "22:00", "closed": false}, ...}
+    immediate_payment_required: bool = Field(default=False)  # Require immediate payment for orders
+    currency: str | None = Field(default=None)  # Currency symbol (€, $, £, etc.)
+    stripe_secret_key: str | None = Field(default=None)  # Stripe secret key for this tenant
+    stripe_publishable_key: str | None = Field(default=None)  # Stripe publishable key for this tenant
 
     users: list["User"] = Relationship(back_populates="tenant")
 
@@ -102,3 +126,19 @@ class OrderCreate(SQLModel):
 
 class OrderStatusUpdate(SQLModel):
     status: OrderStatus
+
+
+class TenantUpdate(SQLModel):
+    name: str | None = None
+    business_type: BusinessType | None = None
+    description: str | None = None
+    phone: str | None = None
+    whatsapp: str | None = None
+    email: str | None = None
+    address: str | None = None
+    website: str | None = None
+    opening_hours: str | None = None  # JSON string
+    immediate_payment_required: bool | None = None
+    currency: str | None = None
+    stripe_secret_key: str | None = None
+    stripe_publishable_key: str | None = None

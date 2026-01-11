@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     stripe_secret_key: str = Field(default="", validation_alias="STRIPE_SECRET_KEY")
     stripe_publishable_key: str = Field(default="", validation_alias="STRIPE_PUBLISHABLE_KEY")
     stripe_currency: str = Field(default="mxn", validation_alias="STRIPE_CURRENCY")
+    
+    # CORS configuration
+    cors_origins: str = Field(
+        default="http://localhost:4200",
+        validation_alias="CORS_ORIGINS"
+    )
 
     @property
     def database_url(self) -> str:

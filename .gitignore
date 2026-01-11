@@ -17,6 +17,9 @@ venv/
 # Local config (copy from config.env.example)
 config.env
 
+# Uploads directory (user-uploaded files)
+back/uploads/
+
 # Node / Angular (front has its own .gitignore too, this is just extra safety)
 node_modules/
 dist/

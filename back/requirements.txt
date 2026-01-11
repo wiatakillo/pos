@@ -21,3 +21,6 @@ redis>=5.0
 
 # Payment processing
 stripe>=8.0
+
+# Image processing
+Pillow>=10.0.0

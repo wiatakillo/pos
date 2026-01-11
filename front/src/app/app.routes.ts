@@ -12,6 +12,7 @@ export const routes: Routes = [
   { path: 'products', canActivate: [authGuard], loadComponent: () => import('./products/products.component').then(m => m.ProductsComponent) },
   { path: 'tables', canActivate: [authGuard], loadComponent: () => import('./tables/tables.component').then(m => m.TablesComponent) },
   { path: 'orders', canActivate: [authGuard], loadComponent: () => import('./orders/orders.component').then(m => m.OrdersComponent) },
+  { path: 'settings', canActivate: [authGuard], loadComponent: () => import('./settings/settings.component').then(m => m.SettingsComponent) },
 
   { path: '**', redirectTo: '' }
 ];

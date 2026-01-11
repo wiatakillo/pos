@@ -1,4 +1,50 @@
 services:
+  back:
+    build: ./back
+    container_name: pos-back
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-8020}:8020"
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=${POSTGRES_USER:-pos}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-pos}
+      - DB_NAME=${POSTGRES_DB:-pos}
+      - REDIS_URL=redis://redis:6379
+      - SECRET_KEY=${SECRET_KEY:-CHANGE_THIS_IN_PRODUCTION}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY:-}
+      - STRIPE_CURRENCY=${STRIPE_CURRENCY:-mxn}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:4200}
+    volumes:
+      - ./back:/app
+      - ./back/uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  front:
+    build: ./front
+    container_name: pos-front
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-4200}:4200"
+    environment:
+      - NODE_ENV=development
+      - API_URL=${API_URL:-http://localhost:8020}
+      - WS_URL=${WS_URL:-ws://localhost:8021}
+      - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY:-}
+    volumes:
+      - ./front:/app
+      - /app/node_modules
+    depends_on:
+      - db
+      - redis
+      - ws-bridge
+      - back
   db:
     image: postgres:18-alpine3.23
     container_name: pos-postgres
