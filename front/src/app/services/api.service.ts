@@ -456,19 +456,15 @@ export class ApiService {
   }
 
   createTenantProduct(catalogId: number, providerProductId?: number, name?: string, priceCents?: number): Observable<TenantProduct> {
-    let params = new HttpParams().set('catalog_id', catalogId.toString());
-    if (providerProductId) params = params.set('provider_product_id', providerProductId.toString());
-    if (name) params = params.set('name', name);
-    if (priceCents !== undefined) params = params.set('price_cents', priceCents.toString());
-    return this.http.post<TenantProduct>(`${this.apiUrl}/tenant-products`, null, { params });
+    const body: any = { catalog_id: catalogId };
+    if (providerProductId) body.provider_product_id = providerProductId;
+    if (name) body.name = name;
+    if (priceCents !== undefined) body.price_cents = priceCents;
+    return this.http.post<TenantProduct>(`${this.apiUrl}/tenant-products`, body);
   }
 
   updateTenantProduct(id: number, updates: { name?: string; price_cents?: number; is_active?: boolean }): Observable<TenantProduct> {
-    let params = new HttpParams();
-    if (updates.name) params = params.set('name', updates.name);
-    if (updates.price_cents !== undefined) params = params.set('price_cents', updates.price_cents.toString());
-    if (updates.is_active !== undefined) params = params.set('is_active', updates.is_active.toString());
-    return this.http.put<TenantProduct>(`${this.apiUrl}/tenant-products/${id}`, null, { params });
+    return this.http.put<TenantProduct>(`${this.apiUrl}/tenant-products/${id}`, updates);
   }
 
   deleteTenantProduct(id: number): Observable<void> {

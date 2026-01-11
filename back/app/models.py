@@ -218,3 +218,16 @@ class TenantUpdate(SQLModel):
     currency: str | None = None
     stripe_secret_key: str | None = None
     stripe_publishable_key: str | None = None
+
+
+class TenantProductCreate(SQLModel):
+    catalog_id: int
+    provider_product_id: int | None = None
+    name: str | None = None
+    price_cents: int | None = None
+
+
+class TenantProductUpdate(SQLModel):
+    name: str | None = None
+    price_cents: int | None = None
+    is_active: bool | None = None

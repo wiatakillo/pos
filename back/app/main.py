@@ -10,7 +10,7 @@ from uuid import uuid4
 from PIL import Image
 import redis
 import stripe
-from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, status
+from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, status, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
@@ -954,39 +954,37 @@ def list_tenant_products(
 
 @app.post("/tenant-products")
 def create_tenant_product(
-    catalog_id: int,
+    product_data: models.TenantProductCreate,
     current_user: Annotated[models.User, Depends(security.get_current_user)],
-    session: Session = Depends(get_session),
-    provider_product_id: int | None = None,
-    name: str | None = None,
-    price_cents: int | None = None
+    session: Session = Depends(get_session)
 ) -> models.TenantProduct:
     """Add a product from catalog to tenant's menu."""
     # Get catalog item
     catalog_item = session.exec(
-        select(models.ProductCatalog).where(models.ProductCatalog.id == catalog_id)
+        select(models.ProductCatalog).where(models.ProductCatalog.id == product_data.catalog_id)
     ).first()
     if not catalog_item:
         raise HTTPException(status_code=404, detail="Catalog item not found")
     
     # If provider_product_id is provided, validate it
-    if provider_product_id:
+    if product_data.provider_product_id:
         provider_product = session.exec(
             select(models.ProviderProduct).where(
-                models.ProviderProduct.id == provider_product_id,
-                models.ProviderProduct.catalog_id == catalog_id
+                models.ProviderProduct.id == product_data.provider_product_id,
+                models.ProviderProduct.catalog_id == product_data.catalog_id
             )
         ).first()
         if not provider_product:
             raise HTTPException(status_code=404, detail="Provider product not found or doesn't match catalog")
     
     # Use catalog name if name not provided
-    product_name = name or catalog_item.name
+    product_name = product_data.name or catalog_item.name
     
     # Use provider price if price not provided and provider_product_id is set
-    if price_cents is None and provider_product_id:
+    price_cents = product_data.price_cents
+    if price_cents is None and product_data.provider_product_id:
         provider_product = session.exec(
-            select(models.ProviderProduct).where(models.ProviderProduct.id == provider_product_id)
+            select(models.ProviderProduct).where(models.ProviderProduct.id == product_data.provider_product_id)
         ).first()
         if provider_product and provider_product.price_cents:
             price_cents = provider_product.price_cents
@@ -998,8 +996,8 @@ def create_tenant_product(
     
     tenant_product = models.TenantProduct(
         tenant_id=current_user.tenant_id,
-        catalog_id=catalog_id,
-        provider_product_id=provider_product_id,
+        catalog_id=product_data.catalog_id,
+        provider_product_id=product_data.provider_product_id,
         name=product_name,
         price_cents=price_cents,
     )
@@ -1013,9 +1011,7 @@ def create_tenant_product(
 @app.put("/tenant-products/{tenant_product_id}")
 def update_tenant_product(
     tenant_product_id: int,
-    name: str | None = None,
-    price_cents: int | None = None,
-    is_active: bool | None = None,
+    product_update: models.TenantProductUpdate,
     current_user: Annotated[models.User, Depends(security.get_current_user)],
     session: Session = Depends(get_session)
 ) -> models.TenantProduct:
@@ -1030,12 +1026,12 @@ def update_tenant_product(
     if not tenant_product:
         raise HTTPException(status_code=404, detail="Tenant product not found")
     
-    if name is not None:
-        tenant_product.name = name
-    if price_cents is not None:
-        tenant_product.price_cents = price_cents
-    if is_active is not None:
-        tenant_product.is_active = is_active
+    if product_update.name is not None:
+        tenant_product.name = product_update.name
+    if product_update.price_cents is not None:
+        tenant_product.price_cents = product_update.price_cents
+    if product_update.is_active is not None:
+        tenant_product.is_active = product_update.is_active
     
     session.add(tenant_product)
     session.commit()
