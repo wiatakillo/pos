@@ -67,6 +67,82 @@ class Product(TenantMixin, table=True):
     ingredients: str | None = None  # Comma-separated list
 
 
+# ============ PROVIDER & CATALOG SYSTEM ============
+
+class Provider(SQLModel, table=True):
+    """Product providers (wine suppliers, food distributors, etc.)"""
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(unique=True, index=True)  # e.g., "Tusumiller", "Sysco"
+    url: str | None = None
+    api_endpoint: str | None = None
+    is_active: bool = Field(default=True, index=True)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class ProductCatalog(SQLModel, table=True):
+    """
+    Normalized product catalog - same product from different providers links here.
+    This is the master product list that restaurants browse.
+    """
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    description: str | None = None
+    category: str | None = Field(index=True)  # e.g., "Wine", "Food", "Beverage"
+    subcategory: str | None = Field(index=True)  # e.g., "Red Wine", "Appetizer"
+    barcode: str | None = Field(index=True)  # For product matching across providers
+    brand: str | None = None
+    # Metadata for matching products across providers
+    normalized_name: str | None = Field(index=True)  # Lowercased, normalized for matching
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class ProviderProduct(SQLModel, table=True):
+    """
+    Provider-specific product data (prices, images, availability).
+    Same ProductCatalog item can have multiple ProviderProduct entries.
+    """
+    id: int | None = Field(default=None, primary_key=True)
+    catalog_id: int = Field(foreign_key="productcatalog.id", index=True)  # Links to normalized product
+    provider_id: int = Field(foreign_key="provider.id", index=True)
+    external_id: str = Field(index=True)  # ID from provider's system
+    name: str  # Provider's name for this product (may differ from catalog)
+    price_cents: int | None = None  # Provider's price
+    image_url: str | None = None
+    availability: bool = Field(default=True, index=True)
+    # Additional provider-specific metadata
+    country: str | None = None
+    region: str | None = None
+    grape_variety: str | None = None  # For wines
+    volume_ml: int | None = None  # For beverages
+    unit: str | None = None  # e.g., "bottle", "case", "kg"
+    # Timestamps for sync
+    last_synced_at: datetime | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class TenantProduct(SQLModel, table=True):
+    """
+    Restaurant's selected products with their own pricing.
+    Links tenant's Product to ProductCatalog, optionally to a specific ProviderProduct.
+    """
+    id: int | None = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    catalog_id: int = Field(foreign_key="productcatalog.id", index=True)
+    provider_product_id: int | None = Field(default=None, foreign_key="providerproduct.id", index=True)
+    # Link to existing Product table for backward compatibility
+    product_id: int | None = Field(default=None, foreign_key="product.id", index=True)
+    # Restaurant's own data
+    name: str  # Restaurant can customize the name
+    price_cents: int  # Restaurant's selling price (can add markup)
+    image_filename: str | None = None  # Restaurant's own image
+    ingredients: str | None = None
+    is_active: bool = Field(default=True, index=True)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class Table(TenantMixin, table=True):
     id: int | None = Field(default=None, primary_key=True)
     name: str  # e.g., "Table 5"
