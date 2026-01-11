@@ -103,61 +103,55 @@ def fetch_wines_from_api(page: int = 1) -> dict[str, Any]:
         raise
 
 
+def get_category_name(category_id: str, filter_data: dict[str, Any] | None = None) -> str:
+    """Map category ID to name. Use tag-based mapping as fallback."""
+    # Category ID to name mapping (based on common wine categories)
+    category_map = {
+        "18010": "Tintos",
+        "18011": "Blancos", 
+        "18013": "Espumosos",
+        "18014": "Rosados",
+        "18015": "Dulces",
+        "18016": "Generosos",
+    }
+    
+    # Remove quotes if present
+    cat_id = category_id.strip("'\"")
+    return category_map.get(cat_id, "Wine")
+
+
 def parse_wine_data(api_data: dict[str, Any]) -> list[dict[str, Any]]:
     """Parse API response and extract wine data."""
     wines = []
     
-    # The API response structure needs to be explored
-    # Based on typical wine API structures, it might have:
-    # - products/list array
-    # - items array
-    # - data array
+    # The API returns data in the "data" key
+    products = api_data.get("data", [])
     
-    # Try different possible structures
-    products = []
-    
-    if "products" in api_data:
-        products = api_data["products"]
-    elif "list" in api_data:
-        products = api_data["list"]
-    elif "items" in api_data:
-        products = api_data["items"]
-    elif "data" in api_data:
-        products = api_data["data"]
-    elif isinstance(api_data, list):
-        products = api_data
-    else:
-        # Try to find any array that might contain products
-        for key, value in api_data.items():
-            if isinstance(value, list) and len(value) > 0:
-                if isinstance(value[0], dict):
-                    products = value
-                    break
-    
-    # If still no products, print the structure for debugging
     if not products:
-        print("Warning: Could not find products in API response.")
-        print("API response keys:", list(api_data.keys())[:10])
-        print("Sample response structure (first 500 chars):")
-        print(json.dumps(api_data, indent=2)[:500])
+        print("Warning: No products found in API response.")
         return []
+    
+    # Get filter data for category mapping
+    filter_data = api_data.get("filter", {})
     
     for product in products:
         if not isinstance(product, dict):
             continue
         
-        # Extract wine data - adapt field names based on actual API response
-        wine_id = str(product.get("id") or product.get("product_id") or product.get("wine_id") or "")
-        wine_name = product.get("name") or product.get("nombre") or product.get("title") or product.get("wine_name") or ""
-        
-        if not wine_name or not wine_id:
+        # Extract wine ID
+        wine_id = str(product.get("id") or product.get("idProduct") or "")
+        if not wine_id:
             continue
         
-        # Extract price - might be in different formats
-        price = product.get("price") or product.get("precio") or product.get("price_cents")
+        # Use fullname if available, otherwise nombre
+        wine_name = product.get("fullname") or product.get("nombre") or ""
+        if not wine_name:
+            continue
+        
+        # Extract price - use pricecopa (price per glass) or coste (cost)
+        price = product.get("pricecopa") or product.get("coste") or product.get("price") or 0
         if price:
-            # Convert to cents if it's a decimal
-            if isinstance(price, float):
+            if isinstance(price, (int, float)):
                 price_cents = int(price * 100)
             elif isinstance(price, str):
                 try:
@@ -165,18 +159,72 @@ def parse_wine_data(api_data: dict[str, Any]) -> list[dict[str, Any]]:
                 except (ValueError, AttributeError):
                     price_cents = None
             else:
-                price_cents = int(price)
+                price_cents = None
         else:
             price_cents = None
         
-        # Extract category
-        category = product.get("category") or product.get("categoria") or product.get("type") or "Wine"
-        subcategory = product.get("subcategory") or product.get("subcategoria") or product.get("category_name") or None
+        # Extract category from categories array or tags
+        categories = product.get("categories", [])
+        category = "Wine"
+        subcategory = None
         
-        # Extract image
-        image_url = product.get("image") or product.get("imagen") or product.get("image_url") or product.get("photo")
-        if image_url and not image_url.startswith("http"):
-            image_url = urljoin(API_BASE_URL, image_url)
+        if categories and isinstance(categories, list) and len(categories) > 0:
+            # Use first category ID
+            cat_id = str(categories[0]).strip("'\"")
+            category = get_category_name(cat_id, filter_data)
+        
+        # Try to get subcategory from tags (e.g., "d.o. cava", "d.o. rioja")
+        tags = product.get("tag", [])
+        if tags and isinstance(tags, list):
+            # Look for D.O. (Denominación de Origen) in tags
+            for tag in tags:
+                if isinstance(tag, str) and tag.lower().startswith("d.o."):
+                    subcategory = tag.title()
+                    break
+        
+        # Extract image - img field contains filename
+        image_filename = product.get("img") or ""
+        image_url = None
+        if image_filename:
+            # Construct full URL
+            image_url = f"{API_BASE_URL}/uploads/{image_filename}"
+        
+        # Extract country, region, grape variety from tags or specific fields
+        country = None
+        region = None
+        grape_variety = None
+        
+        # Country and region are arrays of IDs, but we can extract from tags
+        if tags:
+            # Look for country in tags
+            country_tags = [t for t in tags if isinstance(t, str) and t.lower() in ["españa", "spain", "francia", "france", "italia", "italy"]]
+            if country_tags:
+                country = country_tags[0].title()
+        
+        # Region from tags (e.g., "cataluña", "rioja")
+        if tags:
+            region_tags = [t for t in tags if isinstance(t, str) and any(r in t.lower() for r in ["cataluña", "rioja", "ribera", "priorat", "penedès"])]
+            if region_tags:
+                region = region_tags[0].title()
+        
+        # Grape variety from tags or variedad field
+        variedad = product.get("variedad", [])
+        if variedad and isinstance(variedad, list):
+            # Variedad is array of IDs, but we can get from tags
+            grape_tags = [t for t in tags if isinstance(t, str) and any(g in t.lower() for g in ["macabeo", "parellada", "xarel", "tempranillo", "garnacha", "cabernet"])]
+            if grape_tags:
+                grape_variety = ", ".join(grape_tags[:3])  # Join up to 3 varieties
+        
+        # Extract description
+        description = product.get("description") or ""
+        
+        # Extract brand/winery from fullname or tags
+        brand = None
+        if tags:
+            # Winery names often appear in tags
+            brand_tags = [t for t in tags if isinstance(t, str) and len(t) > 3 and not any(x in t.lower() for x in ["d.o.", "españa", "cataluña", "rioja"])]
+            if brand_tags:
+                brand = brand_tags[0].title()
         
         wine_data = {
             "external_id": wine_id,
@@ -185,12 +233,12 @@ def parse_wine_data(api_data: dict[str, Any]) -> list[dict[str, Any]]:
             "image_url": image_url,
             "category": category,
             "subcategory": subcategory,
-            "country": product.get("country") or product.get("pais") or product.get("country_name"),
-            "region": product.get("region") or product.get("region_name") or product.get("zonado"),
-            "grape_variety": product.get("variety") or product.get("variedad") or product.get("grape_variety") or product.get("uva"),
-            "description": product.get("description") or product.get("descripcion") or product.get("notes"),
-            "brand": product.get("brand") or product.get("marca") or product.get("winery"),
-            "barcode": product.get("barcode") or product.get("ean") or product.get("sku"),
+            "country": country,
+            "region": region,
+            "grape_variety": grape_variety,
+            "description": description,
+            "brand": brand,
+            "barcode": product.get("reference") or None,
         }
         
         wines.append(wine_data)
@@ -309,7 +357,12 @@ def import_wines(clear_existing: bool = False) -> dict[str, int]:
         print(f"Fetching wines from {PROVIDER_NAME}...")
         all_wines = []
         page = 1
-        max_pages = 50  # Safety limit
+        max_pages = 100  # Safety limit
+        
+        # First, get total count
+        api_data = fetch_wines_from_api(1)
+        total_wines = api_data.get("total", 0)
+        print(f"Total wines available: {total_wines}")
         
         while page <= max_pages:
             try:
@@ -321,16 +374,15 @@ def import_wines(clear_existing: bool = False) -> dict[str, int]:
                     break
                 
                 all_wines.extend(wines)
-                print(f"Fetched {len(wines)} wines from page {page} (total: {len(all_wines)})")
+                print(f"Fetched {len(wines)} wines from page {page} (total: {len(all_wines)}/{total_wines})")
                 
-                # Check if there are more pages
-                # Look for pagination info in response
-                total_pages = api_data.get("total_pages") or api_data.get("pages") or api_data.get("last_page")
-                if total_pages and page >= total_pages:
+                # Check if we've got all wines
+                if len(all_wines) >= total_wines:
+                    print(f"All {total_wines} wines fetched.")
                     break
                 
-                # If we got fewer wines than expected, might be last page
-                if len(wines) < 20:  # Assuming ~20 wines per page
+                # If this page returned fewer items than expected, might be last page
+                if len(wines) == 0:
                     break
                 
                 page += 1
