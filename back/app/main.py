@@ -853,7 +853,7 @@ def get_catalog_item(
 
 
 @app.get("/catalog/categories")
-def get_catalog_categories(
+async def get_catalog_categories(
     current_user: Annotated[models.User, Depends(security.get_current_user)],
     session: Session = Depends(get_session)
 ) -> dict:
