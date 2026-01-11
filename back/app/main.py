@@ -724,7 +724,7 @@ def create_provider(
 # ============ PRODUCT CATALOG ============
 
 @app.get("/catalog")
-def list_catalog(
+async def list_catalog(
     current_user: Annotated[models.User, Depends(security.get_current_user)],
     session: Session = Depends(get_session),
     category: str | None = None,
@@ -797,7 +797,7 @@ def list_catalog(
 
 
 @app.get("/catalog/{catalog_id}")
-def get_catalog_item(
+async def get_catalog_item(
     catalog_id: int,
     current_user: Annotated[models.User, Depends(security.get_current_user)],
     session: Session = Depends(get_session)
