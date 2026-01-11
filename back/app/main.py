@@ -787,6 +787,11 @@ async def list_catalog(
         # Sort providers by price (lowest first)
         providers_data.sort(key=lambda x: x["price_cents"] if x["price_cents"] else float('inf'))
         
+        # Get main image from first provider (if available)
+        main_image_url = None
+        if providers_data and providers_data[0].get("image_url"):
+            main_image_url = providers_data[0]["image_url"]
+        
         result.append({
             "id": item.id,
             "name": item.name,
@@ -795,6 +800,7 @@ async def list_catalog(
             "subcategory": item.subcategory,
             "barcode": item.barcode,
             "brand": item.brand,
+            "image_url": main_image_url,
             "providers": providers_data,
             "min_price_cents": min([p["price_cents"] for p in providers_data if p["price_cents"]], default=None),
             "max_price_cents": max([p["price_cents"] for p in providers_data if p["price_cents"]], default=None),
@@ -831,11 +837,18 @@ async def get_catalog_item(
             select(models.Provider).where(models.Provider.id == pp.provider_id)
         ).first()
         if provider:
+            # Construct image URL - prefer local image if available
+            image_url = None
+            if pp.image_filename:
+                image_url = f"/uploads/providers/{provider.id}/products/{pp.image_filename}"
+            elif pp.image_url:
+                image_url = pp.image_url
+            
             providers_data.append({
                 "provider_id": provider.id,
                 "provider_name": provider.name,
                 "price_cents": pp.price_cents,
-                "image_url": pp.image_url,
+                "image_url": image_url,
                 "country": pp.country,
                 "region": pp.region,
                 "grape_variety": pp.grape_variety,
@@ -845,6 +858,11 @@ async def get_catalog_item(
     
     providers_data.sort(key=lambda x: x["price_cents"] if x["price_cents"] else float('inf'))
     
+    # Get main image from first provider (if available)
+    main_image_url = None
+    if providers_data and providers_data[0].get("image_url"):
+        main_image_url = providers_data[0]["image_url"]
+    
     return {
         "id": catalog_item.id,
         "name": catalog_item.name,
@@ -853,6 +871,7 @@ async def get_catalog_item(
         "subcategory": catalog_item.subcategory,
         "barcode": catalog_item.barcode,
         "brand": catalog_item.brand,
+        "image_url": main_image_url,
         "providers": providers_data,
         "min_price_cents": min([p["price_cents"] for p in providers_data if p["price_cents"]], default=None),
         "max_price_cents": max([p["price_cents"] for p in providers_data if p["price_cents"]], default=None),

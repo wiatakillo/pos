@@ -66,6 +66,11 @@ import { SidebarComponent } from '../shared/sidebar.component';
           <div class="catalog-grid">
             @for (item of catalogItems(); track item.id) {
               <div class="catalog-card">
+                @if (item.image_url) {
+                  <div class="catalog-image">
+                    <img [src]="item.image_url" [alt]="item.name" (error)="$event.target.style.display='none'">
+                  </div>
+                }
                 <div class="catalog-header">
                   <h3>{{ item.name }}</h3>
                   @if (item.brand) {
@@ -224,6 +229,25 @@ import { SidebarComponent } from '../shared/sidebar.component';
       display: flex;
       flex-direction: column;
       gap: 1rem;
+      overflow: hidden;
+    }
+
+    .catalog-image {
+      width: 100%;
+      height: 200px;
+      overflow: hidden;
+      border-radius: 8px;
+      background: #f5f5f5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: -1.5rem -1.5rem 1rem -1.5rem;
+    }
+
+    .catalog-image img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
     }
 
     .catalog-header {

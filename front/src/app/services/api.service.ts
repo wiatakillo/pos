@@ -137,6 +137,7 @@ export interface CatalogItem {
   subcategory?: string | null;
   barcode?: string | null;
   brand?: string | null;
+  image_url?: string | null;
   providers: ProviderInfo[];
   min_price_cents?: number | null;
   max_price_cents?: number | null;
