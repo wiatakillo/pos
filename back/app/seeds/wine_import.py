@@ -156,8 +156,11 @@ def parse_wine_data(api_data: dict[str, Any]) -> list[dict[str, Any]]:
         if not wine_name:
             continue
         
-        # Extract price - use pricecopa (price per glass) or coste (cost)
-        price = product.get("pricecopa") or product.get("coste") or product.get("price") or 0
+        # Extract price - prioritize bottle price (price) over glass price (pricecopa)
+        # price = bottle price (what restaurants need)
+        # pricecopa = price per glass
+        # coste = cost
+        price = product.get("price") or product.get("pricecopa") or product.get("coste") or 0
         if price:
             if isinstance(price, (int, float)):
                 price_cents = int(price * 100)
