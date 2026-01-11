@@ -958,11 +958,11 @@ export class MenuComponent implements OnInit {
         this.tableName.set(data.table_name);
         this.tenantId = data.tenant_id;
         
-        // Extract available categories from products
+        // Extract available main categories from products
         const categories = new Set<string>();
         data.products.forEach((product: Product) => {
-          if (product.wine_type) {
-            categories.add(product.wine_type);
+          if (product.category) {
+            categories.add(product.category);
           }
         });
         this.availableCategories.set(Array.from(categories).sort());
@@ -1005,19 +1005,13 @@ export class MenuComponent implements OnInit {
       this.filteredProducts.set(this.products());
     } else {
       this.filteredProducts.set(
-        this.products().filter(p => p.wine_type === category)
+        this.products().filter(p => p.category === category)
       );
     }
   }
 
   getCategoryLabel(category: string): string {
-    // Return Spanish labels for wine types
-    if (category.includes('Red')) return 'Tintos';
-    if (category.includes('White')) return 'Blancos';
-    if (category.includes('Sparkling')) return 'Espumosos';
-    if (category.includes('Rosé') || category.includes('Rose')) return 'Rosados';
-    if (category.includes('Sweet')) return 'Dulces';
-    if (category.includes('Fortified')) return 'Generosos';
+    // Return category name as-is (already in English: Starters, Main Course, etc.)
     return category;
   }
 

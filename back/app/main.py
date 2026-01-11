@@ -1265,9 +1265,12 @@ def get_menu(
             "ingredients": tp.ingredients,
         }
         
-        # Add catalog description
-        if catalog_item and catalog_item.description:
-            product_data["description"] = catalog_item.description
+        # Add catalog category and description
+        if catalog_item:
+            if catalog_item.category:
+                product_data["category"] = catalog_item.category
+            if catalog_item.description:
+                product_data["description"] = catalog_item.description
         
         # Extract wine type - use API category ID first, but check description for conflicts
         wine_type = None
