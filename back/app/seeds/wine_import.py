@@ -619,9 +619,16 @@ def get_or_create_catalog_item(
         if category and not catalog_item.category:
             catalog_item.category = category
             updated = True
-        if subcategory and not catalog_item.subcategory:
-            catalog_item.subcategory = subcategory
-            updated = True
+        # Update subcategory if new one is provided (even if existing one exists, to add Wine by Glass)
+        if subcategory:
+            # If new subcategory includes "Wine by Glass" and existing doesn't, update it
+            if "Wine by Glass" in subcategory and (not catalog_item.subcategory or "Wine by Glass" not in catalog_item.subcategory):
+                catalog_item.subcategory = subcategory
+                updated = True
+            # If no existing subcategory, set it
+            elif not catalog_item.subcategory:
+                catalog_item.subcategory = subcategory
+                updated = True
         if barcode and not catalog_item.barcode:
             catalog_item.barcode = barcode
             updated = True
