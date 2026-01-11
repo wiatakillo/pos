@@ -581,6 +581,10 @@ def update_product(
         product.price_cents = product_update.price_cents
     if product_update.ingredients is not None:
         product.ingredients = product_update.ingredients
+    if product_update.category is not None:
+        product.category = product_update.category
+    if product_update.subcategory is not None:
+        product.subcategory = product_update.subcategory
     
     session.add(product)
     session.commit()
@@ -764,12 +768,10 @@ async def list_catalog(
                 select(models.Provider).where(models.Provider.id == pp.provider_id)
             ).first()
             if provider:
-                # Construct image URL - prefer local image if available
+                # Construct image URL - only use local images, never external URLs
                 image_url = None
                 if pp.image_filename:
                     image_url = f"/uploads/providers/{provider.token}/products/{pp.image_filename}"
-                elif pp.image_url:
-                    image_url = pp.image_url
                 
                 providers_data.append({
                     "provider_id": provider.id,
@@ -897,12 +899,10 @@ async def get_catalog_item(
             select(models.Provider).where(models.Provider.id == pp.provider_id)
         ).first()
         if provider:
-            # Construct image URL - prefer local image if available
+            # Construct image URL - only use local images, never external URLs
             image_url = None
             if pp.image_filename:
                 image_url = f"/uploads/providers/{provider.token}/products/{pp.image_filename}"
-            elif pp.image_url:
-                image_url = pp.image_url
             
             providers_data.append({
                 "provider_id": provider.id,
@@ -1234,7 +1234,16 @@ def get_menu(
     for tp in tenant_products:
         # Get image from provider product if available, otherwise use tenant product image
         image_filename = tp.image_filename
-        if not image_filename and tp.provider_product_id:
+        provider_product = None
+        catalog_item = None
+        
+        # Get catalog item for description
+        catalog_item = session.exec(
+            select(models.ProductCatalog).where(models.ProductCatalog.id == tp.catalog_id)
+        ).first()
+        
+        # Get provider product for detailed wine info
+        if tp.provider_product_id:
             provider_product = session.exec(
                 select(models.ProviderProduct).where(models.ProviderProduct.id == tp.provider_product_id)
             ).first()
@@ -1246,25 +1255,168 @@ def get_menu(
                     # Construct path to provider image
                     image_filename = f"providers/{provider.token}/products/{provider_product.image_filename}"
         
-        products_list.append({
+        # Build product data with detailed wine information
+        product_data = {
             "id": tp.id,
             "name": tp.name,
             "price_cents": tp.price_cents,
             "image_filename": image_filename,
             "tenant_id": tp.tenant_id,
             "ingredients": tp.ingredients,
-        })
+        }
+        
+        # Add catalog category, subcategory and description
+        # Use codes for internationalization
+        if catalog_item:
+            if catalog_item.category:
+                from .category_codes import get_category_code
+                product_data["category"] = catalog_item.category
+                product_data["category_code"] = get_category_code(catalog_item.category)
+            if catalog_item.subcategory:
+                product_data["subcategory"] = catalog_item.subcategory
+            if catalog_item.description:
+                product_data["description"] = catalog_item.description
+        
+        # Extract wine type - use API category ID first, but check description for conflicts
+        wine_type = None
+        description_wine_type = None
+        
+        # Get description text first to check for conflicts
+        description_text = ""
+        if provider_product and provider_product.detailed_description:
+            description_text = provider_product.detailed_description.lower()
+        elif catalog_item and catalog_item.description:
+            description_text = catalog_item.description.lower()
+        
+        # Extract wine type from description
+        if description_text:
+            if "vino blanco" in description_text:
+                description_wine_type = "White Wine"
+            elif "vino tinto" in description_text:
+                description_wine_type = "Red Wine"
+            elif "espumoso" in description_text or "cava" in description_text:
+                description_wine_type = "Sparkling Wine"
+            elif "rosado" in description_text or "rosé" in description_text:
+                description_wine_type = "Rosé Wine"
+        
+        # First, use the category ID from provider product (direct from API)
+        category_wine_type = None
+        if provider_product and provider_product.wine_category_id:
+            from app.seeds.wine_import import get_category_name
+            category_wine_type = get_category_name(provider_product.wine_category_id, None)
+            # If we got a valid wine type, use it
+            if category_wine_type and category_wine_type == "Wine":
+                category_wine_type = None
+        
+        # If description explicitly contradicts category, trust description (more reliable)
+        if description_wine_type and category_wine_type:
+            if description_wine_type != category_wine_type:
+                # Description contradicts category - trust description
+                wine_type = description_wine_type
+            else:
+                # They match - use category (from API)
+                wine_type = category_wine_type
+        elif description_wine_type:
+            # Only description available
+            wine_type = description_wine_type
+        elif category_wine_type:
+            # Only category available
+            wine_type = category_wine_type
+        
+        # If still no wine type, try subcategory as last resort
+        if not wine_type and catalog_item and catalog_item.subcategory:
+            # Subcategory format: "Red Wine - D.O. Empordà - Wine by Glass"
+            # Extract first part before first " - "
+            subcategory_parts = catalog_item.subcategory.split(" - ")
+            first_part = subcategory_parts[0].strip()
+            # Check if it's a known wine type
+            wine_types = ["Red Wine", "White Wine", "Sparkling Wine", "Rosé Wine", "Sweet Wine", "Fortified Wine"]
+            if first_part in wine_types:
+                wine_type = first_part
+            # Also check for Spanish terms
+            elif "Red" in first_part or "Tinto" in first_part or "Tintos" in first_part:
+                wine_type = "Red Wine"
+            elif "White" in first_part or "Blanco" in first_part or "Blancos" in first_part:
+                wine_type = "White Wine"
+            elif "Sparkling" in first_part or "Espumoso" in first_part or "Cava" in first_part:
+                wine_type = "Sparkling Wine"
+            elif "Rosé" in first_part or "Rosado" in first_part:
+                wine_type = "Rosé Wine"
+        
+        # Now build subcategory_codes AFTER wine_type is determined
+        # This ensures wine_type takes precedence over subcategory string
+        subcategory_codes = []
+        
+        # First, extract all non-wine-type codes from subcategory (e.g., WINE_BY_GLASS)
+        if catalog_item and catalog_item.subcategory:
+            from .category_codes import get_all_subcategory_codes, extract_wine_type_code
+            all_codes = get_all_subcategory_codes(catalog_item.subcategory)
+            # Remove wine type codes - we'll add the correct one based on wine_type
+            wine_type_codes = ["WINE_RED", "WINE_WHITE", "WINE_SPARKLING", "WINE_ROSE", "WINE_SWEET", "WINE_FORTIFIED"]
+            for code in all_codes:
+                if code not in wine_type_codes:
+                    subcategory_codes.append(code)
+        
+        # Add the correct wine type code based on determined wine_type
+        if wine_type:
+            product_data["wine_type"] = wine_type
+            from .category_codes import extract_wine_type_code
+            wine_type_code = extract_wine_type_code(wine_type)
+            if wine_type_code and wine_type_code not in subcategory_codes:
+                subcategory_codes.append(wine_type_code)
+        
+        # Set subcategory_codes if we have any
+        if subcategory_codes:
+            product_data["subcategory_codes"] = subcategory_codes
+        
+        # Add detailed wine information from provider product
+        if provider_product:
+            if provider_product.detailed_description:
+                product_data["detailed_description"] = provider_product.detailed_description
+            if provider_product.country:
+                product_data["country"] = provider_product.country
+            if provider_product.region:
+                product_data["region"] = provider_product.region
+            if provider_product.wine_style:
+                product_data["wine_style"] = provider_product.wine_style
+            if provider_product.vintage:
+                product_data["vintage"] = provider_product.vintage
+            if provider_product.winery:
+                product_data["winery"] = provider_product.winery
+            if provider_product.grape_variety:
+                product_data["grape_variety"] = provider_product.grape_variety
+            if provider_product.aromas:
+                product_data["aromas"] = provider_product.aromas
+            if provider_product.elaboration:
+                product_data["elaboration"] = provider_product.elaboration
+        
+        products_list.append(product_data)
     
     # Add legacy Products (for backward compatibility)
     for p in legacy_products:
-        products_list.append({
+        product_data = {
             "id": p.id,
             "name": p.name,
             "price_cents": p.price_cents,
             "image_filename": p.image_filename,
             "tenant_id": p.tenant_id,
             "ingredients": p.ingredients,
-        })
+        }
+        
+        # Add category and subcategory if they exist
+        if p.category:
+            product_data["category"] = p.category
+            from .category_codes import get_category_code
+            product_data["category_code"] = get_category_code(p.category)
+        
+        if p.subcategory:
+            product_data["subcategory"] = p.subcategory
+            from .category_codes import get_all_subcategory_codes
+            subcategory_codes = get_all_subcategory_codes(p.subcategory)
+            if subcategory_codes:
+                product_data["subcategory_codes"] = subcategory_codes
+        
+        products_list.append(product_data)
     
     return {
         "table_name": table.name,

@@ -97,7 +97,7 @@ interface PlacedOrder {
           <section class="section">
             <button class="section-header" (click)="menuExpanded.set(!menuExpanded())">
               <span class="section-title">Menu</span>
-              <span class="count-badge">{{ products().length }}</span>
+              <span class="count-badge">{{ filteredProducts().length }}</span>
               <svg class="chevron" [class.expanded]="menuExpanded()" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="6,9 12,15 18,9"/>
               </svg>
@@ -105,7 +105,47 @@ interface PlacedOrder {
             
             @if (menuExpanded()) {
               <div class="section-body">
-                @for (product of products(); track product.id) {
+                <!-- Main Category Filters -->
+                @if (availableCategories().length > 0) {
+                  <div class="category-filters">
+                    <button 
+                      class="category-btn" 
+                      [class.active]="selectedCategory() === null"
+                      (click)="selectCategory(null)">
+                      All Categories
+                    </button>
+                    @for (category of availableCategories(); track category) {
+                      <button 
+                        class="category-btn" 
+                        [class.active]="selectedCategory() === category"
+                        (click)="selectCategory(category)">
+                        {{ category }}
+                      </button>
+                    }
+                  </div>
+                }
+                
+                <!-- Subcategory Filters (shown when main category is selected) -->
+                @if (selectedCategory() && availableSubcategories().length > 0) {
+                  <div class="subcategory-filters">
+                    <button 
+                      class="subcategory-btn" 
+                      [class.active]="selectedSubcategory() === null"
+                      (click)="selectSubcategory(null)">
+                      All {{ selectedCategory() }}
+                    </button>
+                    @for (subcategoryCode of availableSubcategories(); track subcategoryCode) {
+                      <button 
+                        class="subcategory-btn" 
+                        [class.active]="selectedSubcategory() === subcategoryCode"
+                        (click)="selectSubcategory(subcategoryCode)">
+                        {{ getSubcategoryLabel(subcategoryCode) }}
+                      </button>
+                    }
+                  </div>
+                }
+                
+                @for (product of filteredProducts(); track product.id) {
                   <div class="product-card">
                     @if (product.image_filename) {
                       <img [src]="getProductImageUrl(product)" class="product-img" alt="">
@@ -120,9 +160,65 @@ interface PlacedOrder {
                     }
                     <div class="product-details">
                       <div class="product-main">
-                        <h3>{{ product.name }}</h3>
+                        <div class="product-header">
+                          <h3>{{ product.name }}</h3>
+                          @if (product.wine_type) {
+                            <span class="wine-type-badge" [class]="'wine-type-' + getWineTypeClass(product.wine_type)">
+                              {{ getWineTypeLabel(product.wine_type) }}
+                            </span>
+                          }
+                        </div>
                         <span class="product-price">{{ formatPrice(product.price_cents) }}</span>
                       </div>
+                      
+                      <!-- Origin (Country/Region) -->
+                      @if (product.country || product.region) {
+                        <div class="product-origin">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                            <circle cx="12" cy="10" r="3"/>
+                          </svg>
+                          <span>{{ product.country }}{{ product.country && product.region ? ', ' : '' }}{{ product.region }}</span>
+                        </div>
+                      }
+                      
+                      <!-- Wine Details (Style, Vintage, Winery, Grape Variety) -->
+                      @if (product.wine_style || product.vintage || product.winery || product.grape_variety) {
+                        <div class="wine-details">
+                          @if (product.wine_style) {
+                            <span class="wine-badge">{{ product.wine_style }}</span>
+                          }
+                          @if (product.vintage) {
+                            <span class="wine-badge">Vintage {{ product.vintage }}</span>
+                          }
+                          @if (product.winery) {
+                            <span class="wine-badge">{{ product.winery }}</span>
+                          }
+                          @if (product.grape_variety) {
+                            <span class="wine-badge">{{ product.grape_variety }}</span>
+                          }
+                        </div>
+                      }
+                      
+                      <!-- Description -->
+                      @if (product.detailed_description || product.description) {
+                        <p class="product-description">{{ product.detailed_description || product.description }}</p>
+                      }
+                      
+                      <!-- Aromas -->
+                      @if (product.aromas) {
+                        <div class="product-aromas">
+                          <strong>Aromas:</strong> {{ product.aromas }}
+                        </div>
+                      }
+                      
+                      <!-- Elaboration -->
+                      @if (product.elaboration) {
+                        <div class="product-elaboration">
+                          <strong>Elaboration:</strong> {{ product.elaboration }}
+                        </div>
+                      }
+                      
                       @if (product.ingredients) {
                         <button class="ingredients-toggle" (click)="toggleIngredients(product.id!); $event.stopPropagation()">
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -397,6 +493,74 @@ interface PlacedOrder {
 
     .product-card:last-child { margin-bottom: 0; }
 
+    .category-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .category-btn {
+      padding: 10px 18px;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: 24px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--color-text);
+      cursor: pointer;
+      transition: all 0.15s;
+      touch-action: manipulation;
+    }
+
+    .category-btn:hover {
+      background: var(--color-bg);
+      border-color: var(--color-primary);
+      transform: translateY(-1px);
+    }
+
+    .category-btn.active {
+      background: var(--color-primary);
+      color: white;
+      border-color: var(--color-primary);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .subcategory-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 16px;
+      padding: 12px;
+      background: var(--color-bg);
+      border-radius: var(--radius-md);
+      border: 1px solid var(--color-border);
+    }
+
+    .subcategory-btn {
+      padding: 6px 14px;
+      background: white;
+      border: 1px solid var(--color-border);
+      border-radius: 16px;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      color: var(--color-text);
+      cursor: pointer;
+      transition: all 0.15s;
+      touch-action: manipulation;
+    }
+
+    .subcategory-btn:hover {
+      background: var(--color-surface);
+      border-color: var(--color-primary);
+    }
+
+    .subcategory-btn.active {
+      background: var(--color-primary);
+      color: white;
+      border-color: var(--color-primary);
+    }
+
     .product-img {
       width: 72px;
       height: 72px;
@@ -429,18 +593,136 @@ interface PlacedOrder {
       margin-bottom: 6px;
     }
 
+    .product-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 4px;
+    }
+
     .product-main h3 {
-      margin: 0 0 4px;
+      margin: 0;
       font-size: 1rem;
       font-weight: 600;
       color: var(--color-text);
       line-height: 1.3;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .wine-type-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      flex-shrink: 0;
+    }
+
+    .wine-type-badge.wine-type-red {
+      background: rgba(220, 38, 38, 0.15);
+      color: #dc2626;
+      border: 1px solid rgba(220, 38, 38, 0.3);
+    }
+
+    .wine-type-badge.wine-type-white {
+      background: rgba(251, 191, 36, 0.15);
+      color: #d97706;
+      border: 1px solid rgba(251, 191, 36, 0.3);
+    }
+
+    .wine-type-badge.wine-type-sparkling {
+      background: rgba(59, 130, 246, 0.15);
+      color: #2563eb;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+
+    .wine-type-badge.wine-type-rose {
+      background: rgba(244, 114, 182, 0.15);
+      color: #db2777;
+      border: 1px solid rgba(244, 114, 182, 0.3);
+    }
+
+    .wine-type-badge.wine-type-sweet {
+      background: rgba(168, 85, 247, 0.15);
+      color: #9333ea;
+      border: 1px solid rgba(168, 85, 247, 0.3);
+    }
+
+    .wine-type-badge.wine-type-fortified {
+      background: rgba(120, 53, 15, 0.15);
+      color: #92400e;
+      border: 1px solid rgba(120, 53, 15, 0.3);
+    }
+
+    .wine-type-badge.wine-type-other {
+      background: var(--color-surface);
+      color: var(--color-text);
+      border: 1px solid var(--color-border);
     }
 
     .product-price {
       font-size: 1rem;
       font-weight: 700;
       color: var(--color-primary);
+    }
+
+    .product-origin {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.8125rem;
+      color: var(--color-text-muted);
+      margin-top: 4px;
+      margin-bottom: 8px;
+    }
+
+    .product-origin svg {
+      flex-shrink: 0;
+      color: var(--color-text-muted);
+    }
+
+    .wine-details {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+      margin-bottom: 8px;
+    }
+
+    .wine-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--color-text);
+    }
+
+    .product-description {
+      font-size: 0.875rem;
+      color: var(--color-text);
+      line-height: 1.5;
+      margin: 8px 0;
+    }
+
+    .product-aromas,
+    .product-elaboration {
+      font-size: 0.8125rem;
+      color: var(--color-text-muted);
+      margin-top: 6px;
+      line-height: 1.4;
+    }
+
+    .product-aromas strong,
+    .product-elaboration strong {
+      color: var(--color-text);
+      font-weight: 600;
     }
 
     .ingredients-toggle {
@@ -656,6 +938,11 @@ export class MenuComponent implements OnInit {
   loading = signal(true);
   error = signal(false);
   products = signal<Product[]>([]);
+  filteredProducts = signal<Product[]>([]);
+  selectedCategory = signal<string | null>(null);
+  selectedSubcategory = signal<string | null>(null);
+  availableCategories = signal<string[]>([]);
+  availableSubcategories = signal<string[]>([]);
   tenantName = signal('');
   tableName = signal('');
   tenantLogo = signal<string | null>(null);
@@ -728,6 +1015,21 @@ export class MenuComponent implements OnInit {
         this.tableName.set(data.table_name);
         this.tenantId = data.tenant_id;
         
+        // Extract available main categories from products
+        const categories = new Set<string>();
+        data.products.forEach((product: Product) => {
+          if (product.category) {
+            categories.add(product.category);
+          }
+        });
+        this.availableCategories.set(Array.from(categories).sort());
+        
+        // Update subcategories based on selected category
+        this.updateSubcategories(null);
+        
+        // Apply initial filter (show all)
+        this.applyFilter(null, null);
+        
         // Set tenant logo if available
         if (data.tenant_logo && data.tenant_id) {
           this.tenantLogo.set(`${environment.apiUrl}/uploads/${data.tenant_id}/logo/${data.tenant_logo}`);
@@ -751,6 +1053,206 @@ export class MenuComponent implements OnInit {
       },
       error: () => { this.error.set(true); this.loading.set(false); }
     });
+  }
+
+  selectCategory(category: string | null) {
+    this.selectedCategory.set(category);
+    this.selectedSubcategory.set(null);
+    this.updateSubcategories(category);
+    this.applyFilter(category, null);
+  }
+
+  selectSubcategory(subcategoryCode: string | null) {
+    this.selectedSubcategory.set(subcategoryCode);
+    this.applyFilter(this.selectedCategory(), subcategoryCode);
+  }
+
+  updateSubcategories(category: string | null) {
+    if (!category) {
+      this.availableSubcategories.set([]);
+      return;
+    }
+
+    // Extract all subcategory codes from products in the selected category
+    const subcategoryCodes = new Set<string>();
+    
+    this.products().forEach((product: Product) => {
+      if (product.category === category) {
+        // Use subcategory_codes if available (from backend)
+        if (product.subcategory_codes && product.subcategory_codes.length > 0) {
+          product.subcategory_codes.forEach(code => subcategoryCodes.add(code));
+        } else {
+          // Fallback: extract codes from subcategory string
+          if (product.subcategory) {
+            // Extract wine type code
+            const wineTypeCode = this.getWineTypeCodeFromString(product.wine_type || product.subcategory);
+            if (wineTypeCode) {
+              subcategoryCodes.add(wineTypeCode);
+            }
+            // Check for Wine by Glass
+            if (product.subcategory.includes('Wine by Glass')) {
+              subcategoryCodes.add('WINE_BY_GLASS');
+            }
+            // Extract other subcategory codes (non-wine)
+            const otherCodes = this.extractOtherSubcategoryCodes(product.subcategory);
+            otherCodes.forEach(code => subcategoryCodes.add(code));
+          }
+        }
+      }
+    });
+    
+    // Build ordered subcategory list (wine types first, then others, then Wine by Glass)
+    const orderedCodes = [
+      // Wine types
+      'WINE_RED', 'WINE_WHITE', 'WINE_SPARKLING', 'WINE_ROSE', 'WINE_SWEET', 'WINE_FORTIFIED',
+      // Other beverage subcategories
+      'HOT_DRINKS', 'COLD_DRINKS', 'ALCOHOLIC', 'NON_ALCOHOLIC', 'BEER', 'COCKTAILS', 'SOFT_DRINKS',
+      // Starter subcategories
+      'APPETIZERS', 'SALADS', 'SOUPS', 'BREAD_DIPS',
+      // Main course subcategories
+      'MEAT', 'FISH', 'POULTRY', 'VEGETARIAN', 'VEGAN', 'PASTA', 'RICE', 'PIZZA',
+      // Dessert subcategories
+      'CAKES', 'ICE_CREAM', 'FRUIT', 'CHEESE',
+      // Side subcategories
+      'VEGETABLES', 'POTATOES', 'BREAD',
+      // Wine by Glass (always last)
+      'WINE_BY_GLASS'
+    ];
+    
+    const subcategories: string[] = [];
+    
+    orderedCodes.forEach(code => {
+      if (subcategoryCodes.has(code)) {
+        subcategories.push(code);
+      }
+    });
+    
+    this.availableSubcategories.set(subcategories);
+  }
+
+  extractOtherSubcategoryCodes(subcategory: string): string[] {
+    const codes: string[] = [];
+    const subcatLower = subcategory.toLowerCase();
+    
+    // Map common subcategory strings to codes
+    if (subcategory === 'Appetizers' || subcatLower.includes('appetizers')) codes.push('APPETIZERS');
+    if (subcategory === 'Salads' || subcatLower.includes('salads')) codes.push('SALADS');
+    if (subcategory === 'Soups' || subcatLower.includes('soups')) codes.push('SOUPS');
+    if (subcategory === 'Bread & Dips' || (subcatLower.includes('bread') && subcatLower.includes('dips'))) codes.push('BREAD_DIPS');
+    if (subcategory === 'Meat') codes.push('MEAT');
+    if (subcategory === 'Fish') codes.push('FISH');
+    if (subcategory === 'Poultry') codes.push('POULTRY');
+    if (subcategory === 'Vegetarian') codes.push('VEGETARIAN');
+    if (subcategory === 'Vegan') codes.push('VEGAN');
+    if (subcategory === 'Pasta') codes.push('PASTA');
+    if (subcategory === 'Rice') codes.push('RICE');
+    if (subcategory === 'Pizza') codes.push('PIZZA');
+    if (subcategory === 'Cakes') codes.push('CAKES');
+    if (subcategory === 'Ice Cream') codes.push('ICE_CREAM');
+    if (subcategory === 'Fruit') codes.push('FRUIT');
+    if (subcategory === 'Cheese') codes.push('CHEESE');
+    if (subcategory === 'Hot Drinks') codes.push('HOT_DRINKS');
+    if (subcategory === 'Cold Drinks') codes.push('COLD_DRINKS');
+    if (subcategory === 'Alcoholic') codes.push('ALCOHOLIC');
+    if (subcategory === 'Non-Alcoholic') codes.push('NON_ALCOHOLIC');
+    if (subcategory === 'Beer') codes.push('BEER');
+    if (subcategory === 'Cocktails') codes.push('COCKTAILS');
+    if (subcategory === 'Soft Drinks') codes.push('SOFT_DRINKS');
+    if (subcategory === 'Vegetables') codes.push('VEGETABLES');
+    if (subcategory === 'Potatoes') codes.push('POTATOES');
+    if (subcategory === 'Bread') codes.push('BREAD');
+    
+    return codes;
+  }
+
+  getWineTypeCodeFromString(wineType: string | undefined): string | null {
+    if (!wineType) return null;
+    if (wineType === 'Red Wine') return 'WINE_RED';
+    if (wineType === 'White Wine') return 'WINE_WHITE';
+    if (wineType === 'Sparkling Wine') return 'WINE_SPARKLING';
+    if (wineType === 'Rosé Wine') return 'WINE_ROSE';
+    if (wineType === 'Sweet Wine') return 'WINE_SWEET';
+    if (wineType === 'Fortified Wine') return 'WINE_FORTIFIED';
+    return null;
+  }
+
+  applyFilter(category: string | null, subcategoryCode: string | null) {
+    let filtered = this.products();
+    
+    // Filter by main category
+    if (category) {
+      filtered = filtered.filter(p => p.category === category);
+    }
+    
+    // Filter by subcategory code
+    if (subcategoryCode) {
+      if (subcategoryCode === 'WINE_BY_GLASS') {
+        // Filter for products with "Wine by Glass" code
+        filtered = filtered.filter(p => 
+          p.subcategory_codes?.includes('WINE_BY_GLASS') || 
+          (p.subcategory && p.subcategory.includes('Wine by Glass'))
+        );
+      } else {
+        // Filter by subcategory code
+        filtered = filtered.filter(p => {
+          // Use subcategory_codes if available
+          if (p.subcategory_codes && p.subcategory_codes.includes(subcategoryCode)) {
+            return true;
+          }
+          // Fallback: check wine_type matches the code
+          const wineTypeCode = this.getWineTypeCodeFromString(p.wine_type);
+          return wineTypeCode === subcategoryCode;
+        });
+      }
+    }
+    
+    this.filteredProducts.set(filtered);
+  }
+
+  getSubcategoryLabel(subcategoryCode: string): string {
+    // Map subcategory codes to Spanish labels (can be extended for i18n)
+    const labels: Record<string, string> = {
+      // Wine types
+      'WINE_RED': 'Tinto',
+      'WINE_WHITE': 'Blanco',
+      'WINE_SPARKLING': 'Espumoso',
+      'WINE_ROSE': 'Rosado',
+      'WINE_SWEET': 'Dulce',
+      'WINE_FORTIFIED': 'Generoso',
+      'WINE_BY_GLASS': 'Por Copas',
+      // Beverages
+      'HOT_DRINKS': 'Bebidas Calientes',
+      'COLD_DRINKS': 'Bebidas Frías',
+      'ALCOHOLIC': 'Alcohólicas',
+      'NON_ALCOHOLIC': 'Sin Alcohol',
+      'BEER': 'Cerveza',
+      'COCKTAILS': 'Cócteles',
+      'SOFT_DRINKS': 'Refrescos',
+      // Starters
+      'APPETIZERS': 'Aperitivos',
+      'SALADS': 'Ensaladas',
+      'SOUPS': 'Sopas',
+      'BREAD_DIPS': 'Pan y Salsas',
+      // Main Course
+      'MEAT': 'Carne',
+      'FISH': 'Pescado',
+      'POULTRY': 'Aves',
+      'VEGETARIAN': 'Vegetariano',
+      'VEGAN': 'Vegano',
+      'PASTA': 'Pasta',
+      'RICE': 'Arroz',
+      'PIZZA': 'Pizza',
+      // Desserts
+      'CAKES': 'Pasteles',
+      'ICE_CREAM': 'Helados',
+      'FRUIT': 'Fruta',
+      'CHEESE': 'Queso',
+      // Sides
+      'VEGETABLES': 'Verduras',
+      'POTATOES': 'Patatas',
+      'BREAD': 'Pan',
+    };
+    return labels[subcategoryCode] || subcategoryCode;
   }
 
   getProductImageUrl(product: Product): string | null {
@@ -912,5 +1414,27 @@ export class MenuComponent implements OnInit {
     // Clear the order from localStorage since it's paid
     this.placedOrders.set([]);
     localStorage.removeItem(`orders_${this.tableToken}`);
+  }
+
+  getWineTypeClass(wineType: string): string {
+    const type = wineType.toLowerCase();
+    if (type.includes('red')) return 'red';
+    if (type.includes('white')) return 'white';
+    if (type.includes('sparkling')) return 'sparkling';
+    if (type.includes('rosé') || type.includes('rose')) return 'rose';
+    if (type.includes('sweet')) return 'sweet';
+    if (type.includes('fortified')) return 'fortified';
+    return 'other';
+  }
+
+  getWineTypeLabel(wineType: string): string {
+    // Return shorter labels for display
+    if (wineType.includes('Red')) return 'Tinto';
+    if (wineType.includes('White')) return 'Blanco';
+    if (wineType.includes('Sparkling')) return 'Espumoso';
+    if (wineType.includes('Rosé') || wineType.includes('Rose')) return 'Rosado';
+    if (wineType.includes('Sweet')) return 'Dulce';
+    if (wineType.includes('Fortified')) return 'Generoso';
+    return wineType;
   }
 }

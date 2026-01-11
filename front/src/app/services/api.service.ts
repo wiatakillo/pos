@@ -29,6 +29,27 @@ export interface Product {
   ingredients?: string;
   image_size_bytes?: number | null;
   image_size_formatted?: string | null;
+  category?: string; // Main category: "Starters", "Main Course", "Desserts", "Beverages", "Sides"
+  subcategory?: string; // Subcategory: "Red Wine", "Appetizers", etc.
+  // Legacy fields (for menu products from catalog)
+  category_code?: string; // Category code for i18n: "STARTERS", "MAIN_COURSE", "BEVERAGES", etc.
+  subcategory_codes?: string[]; // Subcategory codes for i18n: ["WINE_RED", "WINE_BY_GLASS"], etc.
+  // Wine details (for catalog products)
+  description?: string;
+  detailed_description?: string;
+  country?: string;
+  region?: string;
+  wine_type?: string; // "Red Wine", "White Wine", "Sparkling Wine", etc.
+  wine_style?: string;
+  vintage?: number;
+  winery?: string;
+  grape_variety?: string;
+  aromas?: string;
+  elaboration?: string;
+}
+
+export interface CatalogCategories {
+  [category: string]: string[]; // category -> list of subcategories
 }
 
 export interface Table {
