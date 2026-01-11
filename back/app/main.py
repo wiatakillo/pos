@@ -1269,11 +1269,35 @@ def get_menu(
         if catalog_item and catalog_item.description:
             product_data["description"] = catalog_item.description
         
-        # Extract wine type from subcategory or description
+        # Extract wine type - prioritize description over subcategory (description is more reliable)
         wine_type = None
+        description_text = ""
         
-        # First, try to extract from subcategory
-        if catalog_item and catalog_item.subcategory:
+        # Get description text first
+        if provider_product and provider_product.detailed_description:
+            description_text = provider_product.detailed_description.lower()
+        elif catalog_item and catalog_item.description:
+            description_text = catalog_item.description.lower()
+        
+        # First, try to infer from description (most reliable source)
+        if description_text:
+            # Check for explicit wine type mentions in description
+            if "vino blanco" in description_text:
+                wine_type = "White Wine"
+            elif "vino tinto" in description_text:
+                wine_type = "Red Wine"
+            elif "espumoso" in description_text or "cava" in description_text:
+                wine_type = "Sparkling Wine"
+            elif "rosado" in description_text or "rosé" in description_text:
+                wine_type = "Rosé Wine"
+            # Fallback: check for standalone words (but be more careful)
+            elif " blanco " in description_text or description_text.startswith("blanco ") or description_text.endswith(" blanco"):
+                wine_type = "White Wine"
+            elif " tinto " in description_text or description_text.startswith("tinto ") or description_text.endswith(" tinto"):
+                wine_type = "Red Wine"
+        
+        # If no wine type from description, try subcategory
+        if not wine_type and catalog_item and catalog_item.subcategory:
             # Subcategory format: "Red Wine - D.O. Empordà - Wine by Glass"
             # Extract first part before first " - "
             subcategory_parts = catalog_item.subcategory.split(" - ")
@@ -1291,25 +1315,6 @@ def get_menu(
                 wine_type = "Sparkling Wine"
             elif "Rosé" in first_part or "Rosado" in first_part:
                 wine_type = "Rosé Wine"
-        
-        # If no wine type from subcategory, try to infer from description (more reliable)
-        if not wine_type and provider_product:
-            description_text = ""
-            if provider_product.detailed_description:
-                description_text = provider_product.detailed_description.lower()
-            elif catalog_item and catalog_item.description:
-                description_text = catalog_item.description.lower()
-            
-            if description_text:
-                # Check for explicit wine type mentions in description
-                if "vino blanco" in description_text or "vino blanco" in description_text or "blanco" in description_text.split():
-                    wine_type = "White Wine"
-                elif "vino tinto" in description_text or "tinto" in description_text.split():
-                    wine_type = "Red Wine"
-                elif "espumoso" in description_text or "cava" in description_text:
-                    wine_type = "Sparkling Wine"
-                elif "rosado" in description_text or "rosé" in description_text:
-                    wine_type = "Rosé Wine"
         
         if wine_type:
             product_data["wine_type"] = wine_type
