@@ -1265,10 +1265,12 @@ def get_menu(
             "ingredients": tp.ingredients,
         }
         
-        # Add catalog category and description
+        # Add catalog category, subcategory and description
         if catalog_item:
             if catalog_item.category:
                 product_data["category"] = catalog_item.category
+            if catalog_item.subcategory:
+                product_data["subcategory"] = catalog_item.subcategory
             if catalog_item.description:
                 product_data["description"] = catalog_item.description
         

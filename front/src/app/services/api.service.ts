@@ -30,6 +30,7 @@ export interface Product {
   image_size_bytes?: number | null;
   image_size_formatted?: string | null;
   category?: string; // Main category: "Starters", "Main Course", "Desserts", "Beverages", "Sides"
+  subcategory?: string; // Subcategory: "Red Wine", "White Wine", "Wine by Glass", etc.
   // Wine details
   description?: string;
   detailed_description?: string;

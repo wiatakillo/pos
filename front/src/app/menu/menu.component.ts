@@ -105,21 +105,41 @@ interface PlacedOrder {
             
             @if (menuExpanded()) {
               <div class="section-body">
-                <!-- Category Filters -->
+                <!-- Main Category Filters -->
                 @if (availableCategories().length > 0) {
                   <div class="category-filters">
                     <button 
                       class="category-btn" 
                       [class.active]="selectedCategory() === null"
                       (click)="selectCategory(null)">
-                      All
+                      All Categories
                     </button>
                     @for (category of availableCategories(); track category) {
                       <button 
                         class="category-btn" 
                         [class.active]="selectedCategory() === category"
                         (click)="selectCategory(category)">
-                        {{ getCategoryLabel(category) }}
+                        {{ category }}
+                      </button>
+                    }
+                  </div>
+                }
+                
+                <!-- Subcategory Filters (shown when main category is selected) -->
+                @if (selectedCategory() && availableSubcategories().length > 0) {
+                  <div class="subcategory-filters">
+                    <button 
+                      class="subcategory-btn" 
+                      [class.active]="selectedSubcategory() === null"
+                      (click)="selectSubcategory(null)">
+                      All {{ selectedCategory() }}
+                    </button>
+                    @for (subcategory of availableSubcategories(); track subcategory) {
+                      <button 
+                        class="subcategory-btn" 
+                        [class.active]="selectedSubcategory() === subcategory"
+                        (click)="selectSubcategory(subcategory)">
+                        {{ getSubcategoryLabel(subcategory) }}
                       </button>
                     }
                   </div>
@@ -477,18 +497,16 @@ interface PlacedOrder {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
-      margin-bottom: 16px;
-      padding-bottom: 16px;
-      border-bottom: 1px solid var(--color-border);
+      margin-bottom: 12px;
     }
 
     .category-btn {
-      padding: 8px 16px;
+      padding: 10px 18px;
       background: var(--color-surface);
       border: 1px solid var(--color-border);
-      border-radius: 20px;
+      border-radius: 24px;
       font-size: 0.875rem;
-      font-weight: 500;
+      font-weight: 600;
       color: var(--color-text);
       cursor: pointer;
       transition: all 0.15s;
@@ -498,9 +516,46 @@ interface PlacedOrder {
     .category-btn:hover {
       background: var(--color-bg);
       border-color: var(--color-primary);
+      transform: translateY(-1px);
     }
 
     .category-btn.active {
+      background: var(--color-primary);
+      color: white;
+      border-color: var(--color-primary);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .subcategory-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 16px;
+      padding: 12px;
+      background: var(--color-bg);
+      border-radius: var(--radius-md);
+      border: 1px solid var(--color-border);
+    }
+
+    .subcategory-btn {
+      padding: 6px 14px;
+      background: white;
+      border: 1px solid var(--color-border);
+      border-radius: 16px;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      color: var(--color-text);
+      cursor: pointer;
+      transition: all 0.15s;
+      touch-action: manipulation;
+    }
+
+    .subcategory-btn:hover {
+      background: var(--color-surface);
+      border-color: var(--color-primary);
+    }
+
+    .subcategory-btn.active {
       background: var(--color-primary);
       color: white;
       border-color: var(--color-primary);
@@ -885,7 +940,9 @@ export class MenuComponent implements OnInit {
   products = signal<Product[]>([]);
   filteredProducts = signal<Product[]>([]);
   selectedCategory = signal<string | null>(null);
+  selectedSubcategory = signal<string | null>(null);
   availableCategories = signal<string[]>([]);
+  availableSubcategories = signal<string[]>([]);
   tenantName = signal('');
   tableName = signal('');
   tenantLogo = signal<string | null>(null);
@@ -967,8 +1024,11 @@ export class MenuComponent implements OnInit {
         });
         this.availableCategories.set(Array.from(categories).sort());
         
+        // Update subcategories based on selected category
+        this.updateSubcategories(null);
+        
         // Apply initial filter (show all)
-        this.applyFilter(null);
+        this.applyFilter(null, null);
         
         // Set tenant logo if available
         if (data.tenant_logo && data.tenant_id) {
@@ -997,22 +1057,89 @@ export class MenuComponent implements OnInit {
 
   selectCategory(category: string | null) {
     this.selectedCategory.set(category);
-    this.applyFilter(category);
+    this.selectedSubcategory.set(null);
+    this.updateSubcategories(category);
+    this.applyFilter(category, null);
   }
 
-  applyFilter(category: string | null) {
+  selectSubcategory(subcategory: string | null) {
+    this.selectedSubcategory.set(subcategory);
+    this.applyFilter(this.selectedCategory(), subcategory);
+  }
+
+  updateSubcategories(category: string | null) {
     if (!category) {
-      this.filteredProducts.set(this.products());
-    } else {
-      this.filteredProducts.set(
-        this.products().filter(p => p.category === category)
-      );
+      this.availableSubcategories.set([]);
+      return;
     }
+
+    // Extract subcategories from products in the selected category
+    const subcategories = new Set<string>();
+    this.products().forEach((product: Product) => {
+      if (product.category === category && product.subcategory) {
+        // Extract wine type from subcategory (e.g., "Red Wine - D.O. Empordà - Wine by Glass" -> "Red Wine")
+        const subcat = product.subcategory;
+        let wineType = subcat;
+        
+        // Check if it contains "Wine by Glass"
+        const isByGlass = subcat.includes('Wine by Glass');
+        
+        // Extract wine type (first part before " - ")
+        if (subcat.includes(' - ')) {
+          wineType = subcat.split(' - ')[0];
+        }
+        
+        // Add wine type subcategory
+        if (wineType && (wineType.includes('Wine') || wineType.includes('Red') || wineType.includes('White') || wineType.includes('Sparkling') || wineType.includes('Rosé'))) {
+          subcategories.add(wineType);
+        }
+        
+        // Add "Wine by Glass" as separate subcategory if present
+        if (isByGlass) {
+          subcategories.add('Wine by Glass');
+        }
+      }
+    });
+    
+    this.availableSubcategories.set(Array.from(subcategories).sort());
   }
 
-  getCategoryLabel(category: string): string {
-    // Return category name as-is (already in English: Starters, Main Course, etc.)
-    return category;
+  applyFilter(category: string | null, subcategory: string | null) {
+    let filtered = this.products();
+    
+    // Filter by main category
+    if (category) {
+      filtered = filtered.filter(p => p.category === category);
+    }
+    
+    // Filter by subcategory
+    if (subcategory) {
+      if (subcategory === 'Wine by Glass') {
+        // Filter for products with "Wine by Glass" in subcategory
+        filtered = filtered.filter(p => p.subcategory && p.subcategory.includes('Wine by Glass'));
+      } else {
+        // Filter for products with matching wine type
+        filtered = filtered.filter(p => {
+          if (!p.subcategory) return false;
+          // Check if subcategory starts with the wine type
+          return p.subcategory.startsWith(subcategory) || p.subcategory.includes(subcategory);
+        });
+      }
+    }
+    
+    this.filteredProducts.set(filtered);
+  }
+
+  getSubcategoryLabel(subcategory: string): string {
+    // Map wine types to Spanish labels
+    if (subcategory === 'Wine by Glass') return 'Por Copas';
+    if (subcategory.includes('Red Wine')) return 'Tinto';
+    if (subcategory.includes('White Wine')) return 'Blanco';
+    if (subcategory.includes('Sparkling Wine')) return 'Espumoso';
+    if (subcategory.includes('Rosé Wine')) return 'Rosado';
+    if (subcategory.includes('Sweet Wine')) return 'Dulce';
+    if (subcategory.includes('Fortified Wine')) return 'Generoso';
+    return subcategory;
   }
 
   getProductImageUrl(product: Product): string | null {
