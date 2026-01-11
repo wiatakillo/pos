@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService, CatalogItem, TenantProduct } from '../services/api.service';
 import { SidebarComponent } from '../shared/sidebar.component';
+import { environment } from '../../environments/environment';
 
 @Component({
   selector: 'app-catalog',
@@ -68,7 +69,7 @@ import { SidebarComponent } from '../shared/sidebar.component';
               <div class="catalog-card">
                 @if (item.image_url) {
                   <div class="catalog-image">
-                    <img [src]="item.image_url" [alt]="item.name" (error)="$event.target.style.display='none'">
+                    <img [src]="getImageUrl(item.image_url)" [alt]="item.name" (error)="$event.target.style.display='none'">
                   </div>
                 }
                 <div class="catalog-header">
@@ -567,5 +568,15 @@ export class CatalogComponent implements OnInit {
 
   formatPrice(cents: number): string {
     return `${this.currency()}${(cents / 100).toFixed(2)}`;
+  }
+
+  getImageUrl(url: string | null | undefined): string {
+    if (!url) return '';
+    // If URL is relative (starts with /), prepend API URL
+    if (url.startsWith('/')) {
+      return `${environment.apiUrl}${url}`;
+    }
+    // Otherwise return as-is (absolute URL)
+    return url;
   }
 }
