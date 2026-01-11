@@ -304,8 +304,12 @@ def parse_wine_data(api_data: dict[str, Any], fetch_details: bool = False) -> li
             if aroma_tags:
                 aromas = ", ".join(aroma_tags[:5])  # Join up to 5 aromas
         
+        # Store item_id for later detail page access
+        item_id = str(product.get("idProductMenu") or product.get("id") or "")
+        
         wine_data = {
             "external_id": wine_id,
+            "item_id": item_id,  # Store for detail page access
             "name": wine_name,
             "price_cents": price_cents,
             "image_url": image_url,
@@ -387,27 +391,29 @@ def fetch_wine_detail_page(product_id: str, item_id: str | None = None) -> dict[
         # Extract aromas - look for "text-aroma" divs which contain the aroma names
         aromas = None
         # Pattern: look for section after "Prueba a encontrar estos aromas"
-        aromas_section = re.search(r'Prueba a encontrar estos aromas(.*?)(?:Elaboración|</section>|</div>)', html, re.IGNORECASE | re.DOTALL)
+        aromas_section = re.search(r'Prueba a encontrar estos aromas(.*?)(?:Elaboración|</section>)', html, re.IGNORECASE | re.DOTALL)
         
         if aromas_section:
             aromas_html = aromas_section.group(1)
-            # Extract text from divs with text-aroma class - pattern: <div class="text-aroma">...<div>Ciruela</div>...
-            aroma_items = re.findall(r'<div[^>]*class="[^"]*text-aroma[^"]*"[^>]*>.*?<div[^>]*>([^<]+)</div>', aromas_html, re.IGNORECASE | re.DOTALL)
+            # Extract from nested divs: <div class="text-aroma">...<div style="width: 80px;">Ciruela</div>...
+            # Try pattern matching the nested structure
+            aroma_items = re.findall(r'<div[^>]*class="[^"]*text-aroma[^"]*"[^>]*>.*?<div[^>]*style="[^"]*width:\s*80px[^"]*"[^>]*>([A-Za-záéíóúñÁÉÍÓÚÑ\s]+)</div>', aromas_html, re.IGNORECASE | re.DOTALL)
             if not aroma_items:
-                # Fallback: look for any div content in the aromas section
-                all_text = re.findall(r'<div[^>]*>([^<]+)</div>', aromas_html)
-                # Filter for meaningful aroma names (2-20 chars, not common HTML/class names)
-                exclude_words = ['prueba', 'encontrar', 'estos', 'aromas', 'text-aroma', 'pt-2', 'text-center', 'mb-2', 'col-auto', 'border', 'img-fluid', 'd-flex', 'justify-content', 'align-items']
-                aroma_items = [t.strip() for t in all_text 
-                              if t.strip() and 2 < len(t.strip()) < 20 
-                              and t.strip().lower() not in exclude_words
-                              and not t.strip().startswith('http')
-                              and not t.strip().startswith('style')]
-            # Filter out empty, very short items, and common words
-            exclude_words = ['prueba', 'encontrar', 'estos', 'aromas', 'text-aroma', 'pt-2', 'text-center', 'mb-2']
+                # Fallback: any text in divs after text-aroma class
+                aroma_items = re.findall(r'text-aroma[^>]*>.*?<div[^>]*>([A-Za-záéíóúñÁÉÍÓÚÑ\s]+)</div>', aromas_html, re.IGNORECASE | re.DOTALL)
+            if not aroma_items:
+                # Last resort: find all divs with Spanish words (likely aromas)
+                all_divs = re.findall(r'<div[^>]*>([A-Za-záéíóúñÁÉÍÓÚÑ\s]{3,20})</div>', aromas_html)
+                exclude_words = ['prueba', 'encontrar', 'estos', 'aromas', 'text-aroma', 'pt-2', 'text-center', 'mb-2', 'col-auto', 'border', 'd-flex', 'justify', 'align', 'items', 'center']
+                aroma_items = [d.strip() for d in all_divs 
+                              if d.strip() and d.strip().lower() not in [w.lower() for w in exclude_words]
+                              and not any(char.isdigit() for char in d)]
+            # Clean and filter
+            exclude_words = ['prueba', 'encontrar', 'estos', 'aromas']
             aroma_items = [a.strip() for a in aroma_items 
                           if a.strip() and len(a.strip()) > 2 
-                          and a.strip().lower() not in exclude_words]
+                          and a.strip().lower() not in exclude_words
+                          and a.strip().isalpha() or ' ' in a.strip()]  # Allow spaces for multi-word aromas
             if aroma_items:
                 aromas = ", ".join(aroma_items[:10])  # Join up to 10 aromas
         
