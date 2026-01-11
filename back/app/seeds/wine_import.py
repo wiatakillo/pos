@@ -356,43 +356,99 @@ def import_wines(clear_existing: bool = False) -> dict[str, int]:
         # Fetch wines from API
         print(f"Fetching wines from {PROVIDER_NAME}...")
         all_wines = []
-        page = 1
-        max_pages = 100  # Safety limit
+        seen_wine_ids = set()  # Track wines we've already seen
         
-        # First, get total count
+        # First, get all available categories
         api_data = fetch_wines_from_api(1)
-        total_wines = api_data.get("total", 0)
-        print(f"Total wines available: {total_wines}")
+        filter_data = api_data.get("filter", {})
+        categories = filter_data.get("categories", {})
         
-        while page <= max_pages:
-            try:
-                api_data = fetch_wines_from_api(page)
-                wines = parse_wine_data(api_data)
+        if categories:
+            print(f"Found {len(categories)} categories. Fetching wines from each category...")
+            
+            # Fetch wines from each category
+            for cat_id_str, count in categories.items():
+                cat_id = cat_id_str.strip("'\"")
+                print(f"\nFetching category {cat_id} ({count} wines)...")
                 
-                if not wines:
-                    print(f"No wines found on page {page}, stopping.")
+                # Update form data to filter by category
+                form_data = FORM_DATA_BASE.copy()
+                form_data["categories"] = cat_id
+                form_data["page"] = "1"
+                
+                page = 1
+                max_pages_per_category = 50
+                
+                while page <= max_pages_per_category:
+                    try:
+                        form_data["page"] = str(page)
+                        response = requests.post(
+                            API_ENDPOINT,
+                            headers=HEADERS,
+                            cookies=COOKIES,
+                            data=form_data,
+                            timeout=30
+                        )
+                        response.raise_for_status()
+                        category_api_data = response.json()
+                        
+                        wines = parse_wine_data(category_api_data)
+                        
+                        if not wines:
+                            break
+                        
+                        # Add wines, avoiding duplicates
+                        for wine in wines:
+                            wine_id = wine.get("external_id")
+                            if wine_id and wine_id not in seen_wine_ids:
+                                all_wines.append(wine)
+                                seen_wine_ids.add(wine_id)
+                        
+                        total_in_category = category_api_data.get("total", 0)
+                        print(f"  Page {page}: {len(wines)} wines (total in category: {total_in_category}, unique so far: {len(seen_wine_ids)})")
+                        
+                        # Check if we've got all wines from this category
+                        if len(seen_wine_ids) >= total_in_category or len(wines) == 0:
+                            break
+                        
+                        page += 1
+                        
+                    except Exception as e:
+                        print(f"  Error on page {page} of category {cat_id}: {e}")
+                        break
+        else:
+            # Fallback: fetch without category filter
+            print("No categories found, fetching all wines...")
+            page = 1
+            max_pages = 100
+            
+            while page <= max_pages:
+                try:
+                    api_data = fetch_wines_from_api(page)
+                    wines = parse_wine_data(api_data)
+                    
+                    if not wines:
+                        break
+                    
+                    for wine in wines:
+                        wine_id = wine.get("external_id")
+                        if wine_id and wine_id not in seen_wine_ids:
+                            all_wines.append(wine)
+                            seen_wine_ids.add(wine_id)
+                    
+                    total_wines = api_data.get("total", 0)
+                    print(f"Page {page}: {len(wines)} wines (total: {len(seen_wine_ids)}/{total_wines})")
+                    
+                    if len(seen_wine_ids) >= total_wines or len(wines) == 0:
+                        break
+                    
+                    page += 1
+                    
+                except Exception as e:
+                    print(f"Error on page {page}: {e}")
+                    if page == 1:
+                        raise
                     break
-                
-                all_wines.extend(wines)
-                print(f"Fetched {len(wines)} wines from page {page} (total: {len(all_wines)}/{total_wines})")
-                
-                # Check if we've got all wines
-                if len(all_wines) >= total_wines:
-                    print(f"All {total_wines} wines fetched.")
-                    break
-                
-                # If this page returned fewer items than expected, might be last page
-                if len(wines) == 0:
-                    break
-                
-                page += 1
-                
-            except Exception as e:
-                print(f"Error on page {page}: {e}")
-                if page == 1:
-                    # If first page fails, stop
-                    raise
-                break
         
         if not all_wines:
             print("No wines found in API response.")
