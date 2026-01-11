@@ -238,7 +238,7 @@ import { environment } from '../../environments/environment';
       height: 200px;
       overflow: hidden;
       border-radius: 8px;
-      background: #f5f5f5;
+      background: white;
       display: flex;
       align-items: center;
       justify-content: center;
