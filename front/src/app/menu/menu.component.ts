@@ -97,7 +97,7 @@ interface PlacedOrder {
           <section class="section">
             <button class="section-header" (click)="menuExpanded.set(!menuExpanded())">
               <span class="section-title">Menu</span>
-              <span class="count-badge">{{ products().length }}</span>
+              <span class="count-badge">{{ filteredProducts().length }}</span>
               <svg class="chevron" [class.expanded]="menuExpanded()" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="6,9 12,15 18,9"/>
               </svg>
@@ -105,7 +105,27 @@ interface PlacedOrder {
             
             @if (menuExpanded()) {
               <div class="section-body">
-                @for (product of products(); track product.id) {
+                <!-- Category Filters -->
+                @if (availableCategories().length > 0) {
+                  <div class="category-filters">
+                    <button 
+                      class="category-btn" 
+                      [class.active]="selectedCategory() === null"
+                      (click)="selectCategory(null)">
+                      All
+                    </button>
+                    @for (category of availableCategories(); track category) {
+                      <button 
+                        class="category-btn" 
+                        [class.active]="selectedCategory() === category"
+                        (click)="selectCategory(category)">
+                        {{ getCategoryLabel(category) }}
+                      </button>
+                    }
+                  </div>
+                }
+                
+                @for (product of filteredProducts(); track product.id) {
                   <div class="product-card">
                     @if (product.image_filename) {
                       <img [src]="getProductImageUrl(product)" class="product-img" alt="">
@@ -452,6 +472,39 @@ interface PlacedOrder {
     }
 
     .product-card:last-child { margin-bottom: 0; }
+
+    .category-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 16px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .category-btn {
+      padding: 8px 16px;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: 20px;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--color-text);
+      cursor: pointer;
+      transition: all 0.15s;
+      touch-action: manipulation;
+    }
+
+    .category-btn:hover {
+      background: var(--color-bg);
+      border-color: var(--color-primary);
+    }
+
+    .category-btn.active {
+      background: var(--color-primary);
+      color: white;
+      border-color: var(--color-primary);
+    }
 
     .product-img {
       width: 72px;
@@ -830,6 +883,9 @@ export class MenuComponent implements OnInit {
   loading = signal(true);
   error = signal(false);
   products = signal<Product[]>([]);
+  filteredProducts = signal<Product[]>([]);
+  selectedCategory = signal<string | null>(null);
+  availableCategories = signal<string[]>([]);
   tenantName = signal('');
   tableName = signal('');
   tenantLogo = signal<string | null>(null);
@@ -902,6 +958,18 @@ export class MenuComponent implements OnInit {
         this.tableName.set(data.table_name);
         this.tenantId = data.tenant_id;
         
+        // Extract available categories from products
+        const categories = new Set<string>();
+        data.products.forEach((product: Product) => {
+          if (product.wine_type) {
+            categories.add(product.wine_type);
+          }
+        });
+        this.availableCategories.set(Array.from(categories).sort());
+        
+        // Apply initial filter (show all)
+        this.applyFilter(null);
+        
         // Set tenant logo if available
         if (data.tenant_logo && data.tenant_id) {
           this.tenantLogo.set(`${environment.apiUrl}/uploads/${data.tenant_id}/logo/${data.tenant_logo}`);
@@ -925,6 +993,32 @@ export class MenuComponent implements OnInit {
       },
       error: () => { this.error.set(true); this.loading.set(false); }
     });
+  }
+
+  selectCategory(category: string | null) {
+    this.selectedCategory.set(category);
+    this.applyFilter(category);
+  }
+
+  applyFilter(category: string | null) {
+    if (!category) {
+      this.filteredProducts.set(this.products());
+    } else {
+      this.filteredProducts.set(
+        this.products().filter(p => p.wine_type === category)
+      );
+    }
+  }
+
+  getCategoryLabel(category: string): string {
+    // Return Spanish labels for wine types
+    if (category.includes('Red')) return 'Tintos';
+    if (category.includes('White')) return 'Blancos';
+    if (category.includes('Sparkling')) return 'Espumosos';
+    if (category.includes('Rosé') || category.includes('Rose')) return 'Rosados';
+    if (category.includes('Sweet')) return 'Dulces';
+    if (category.includes('Fortified')) return 'Generosos';
+    return category;
   }
 
   getProductImageUrl(product: Product): string | null {
