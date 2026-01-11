@@ -65,6 +65,8 @@ class Product(TenantMixin, table=True):
     price_cents: int
     image_filename: str | None = None  # Stored in uploads/{tenant_id}/products/
     ingredients: str | None = None  # Comma-separated list
+    category: str | None = Field(default=None, index=True)  # Main category: "Starters", "Main Course", "Desserts", "Beverages", "Sides"
+    subcategory: str | None = Field(default=None, index=True)  # Subcategory: "Red Wine", "Appetizers", etc.
 
 
 # ============ PROVIDER & CATALOG SYSTEM ============
@@ -193,6 +195,8 @@ class ProductUpdate(SQLModel):
     name: str | None = None
     price_cents: int | None = None
     ingredients: str | None = None
+    category: str | None = None
+    subcategory: str | None = None
 
 
 class TableCreate(SQLModel):

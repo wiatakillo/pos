@@ -3,11 +3,12 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { ApiService, Product } from '../services/api.service';
 import { SidebarComponent } from '../shared/sidebar.component';
+import { CommonModule } from '@angular/common';
 
 @Component({
   selector: 'app-products',
   standalone: true,
-  imports: [FormsModule, SidebarComponent],
+  imports: [FormsModule, SidebarComponent, CommonModule],
   template: `
     <app-sidebar>
         <div class="page-header">
@@ -50,6 +51,26 @@ import { SidebarComponent } from '../shared/sidebar.component';
                 <div class="form-group">
                   <label for="ingredients">Ingredients (comma-separated)</label>
                   <input id="ingredients" type="text" [(ngModel)]="formData.ingredients" name="ingredients" placeholder="e.g. Tomato, Mozzarella, Basil">
+                </div>
+                <div class="form-row">
+                  <div class="form-group">
+                    <label for="category">Category</label>
+                    <select id="category" [(ngModel)]="formData.category" name="category" (change)="onCategoryChange()">
+                      <option value="">Select Category</option>
+                      @for (category of getCategoryKeys(); track category) {
+                        <option [value]="category">{{ category }}</option>
+                      }
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label for="subcategory">Subcategory</label>
+                    <select id="subcategory" [(ngModel)]="formData.subcategory" name="subcategory" [disabled]="!formData.category || availableSubcategories().length === 0">
+                      <option value="">Select Subcategory</option>
+                      @for (subcat of availableSubcategories(); track subcat) {
+                        <option [value]="subcat">{{ subcat }}</option>
+                      }
+                    </select>
+                  </div>
                 </div>
                 <div class="form-group">
                   <label>Product Image</label>
@@ -311,13 +332,17 @@ import { SidebarComponent } from '../shared/sidebar.component';
 
     .form-group label { display: block; margin-bottom: var(--space-2); font-size: 0.875rem; font-weight: 500; color: var(--color-text); }
 
-    .form-group input {
+    .form-group input,
+    .form-group select {
       width: 100%;
       padding: var(--space-3);
       border: 1px solid var(--color-border);
       border-radius: var(--radius-md);
       font-size: 0.9375rem;
+      background: var(--color-surface);
+      color: var(--color-text);
       &:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-light); }
+      &:disabled { opacity: 0.6; cursor: not-allowed; background: var(--color-bg); }
     }
 
     .price-input {
@@ -467,15 +492,44 @@ export class ProductsComponent implements OnInit {
   editingProduct = signal<Product | null>(null);
   productToDelete = signal<Product | null>(null);
   error = signal('');
-  formData = { name: '', price: 0, ingredients: '' };
+  formData = { name: '', price: 0, ingredients: '', category: '', subcategory: '' };
   uploading = signal(false);
   pendingImageFile = signal<File | null>(null);
   pendingImagePreview = signal<string | null>(null);
   currency = signal<string>('$');
+  categories = signal<Record<string, string[]>>({});
+  availableSubcategories = signal<string[]>([]);
 
   ngOnInit() {
     this.loadTenantSettings();
     this.loadProducts();
+    this.loadCategories();
+  }
+
+  loadCategories() {
+    this.api.getCatalogCategories().subscribe({
+      next: (cats) => {
+        this.categories.set(cats);
+      },
+      error: (err) => {
+        console.error('Failed to load categories:', err);
+      }
+    });
+  }
+
+  getCategoryKeys(): string[] {
+    return Object.keys(this.categories());
+  }
+
+  onCategoryChange() {
+    // Update available subcategories when category changes
+    const selectedCategory = this.formData.category;
+    if (selectedCategory && this.categories()[selectedCategory]) {
+      this.availableSubcategories.set(this.categories()[selectedCategory]);
+    } else {
+      this.availableSubcategories.set([]);
+      this.formData.subcategory = '';
+    }
   }
 
   loadTenantSettings() {
@@ -509,14 +563,22 @@ export class ProductsComponent implements OnInit {
 
   startEdit(product: Product) {
     this.editingProduct.set(product);
-    this.formData = { name: product.name, price: product.price_cents / 100, ingredients: product.ingredients || '' };
+    this.formData = { 
+      name: product.name, 
+      price: product.price_cents / 100, 
+      ingredients: product.ingredients || '',
+      category: product.category || '',
+      subcategory: product.subcategory || ''
+    };
+    this.onCategoryChange(); // Update available subcategories
     this.showAddForm.set(false);
   }
 
   cancelForm() {
     this.showAddForm.set(false);
     this.editingProduct.set(null);
-    this.formData = { name: '', price: 0, ingredients: '' };
+    this.formData = { name: '', price: 0, ingredients: '', category: '', subcategory: '' };
+    this.availableSubcategories.set([]);
     this.clearPendingImage();
   }
 
@@ -533,7 +595,13 @@ export class ProductsComponent implements OnInit {
     if (!this.formData.name || this.formData.price <= 0) return;
 
     this.saving.set(true);
-    const productData = { name: this.formData.name, price_cents: Math.round(this.formData.price * 100), ingredients: this.formData.ingredients || undefined };
+    const productData = { 
+      name: this.formData.name, 
+      price_cents: Math.round(this.formData.price * 100), 
+      ingredients: this.formData.ingredients || undefined,
+      category: this.formData.category || undefined,
+      subcategory: this.formData.subcategory || undefined
+    };
 
     const editing = this.editingProduct();
     if (editing?.id) {

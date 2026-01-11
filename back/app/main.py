@@ -581,6 +581,10 @@ def update_product(
         product.price_cents = product_update.price_cents
     if product_update.ingredients is not None:
         product.ingredients = product_update.ingredients
+    if product_update.category is not None:
+        product.category = product_update.category
+    if product_update.subcategory is not None:
+        product.subcategory = product_update.subcategory
     
     session.add(product)
     session.commit()

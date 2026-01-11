@@ -30,10 +30,11 @@ export interface Product {
   image_size_bytes?: number | null;
   image_size_formatted?: string | null;
   category?: string; // Main category: "Starters", "Main Course", "Desserts", "Beverages", "Sides"
+  subcategory?: string; // Subcategory: "Red Wine", "Appetizers", etc.
+  // Legacy fields (for menu products from catalog)
   category_code?: string; // Category code for i18n: "STARTERS", "MAIN_COURSE", "BEVERAGES", etc.
-  subcategory?: string; // Subcategory: "Red Wine", "White Wine", "Wine by Glass", etc.
   subcategory_codes?: string[]; // Subcategory codes for i18n: ["WINE_RED", "WINE_BY_GLASS"], etc.
-  // Wine details
+  // Wine details (for catalog products)
   description?: string;
   detailed_description?: string;
   country?: string;
@@ -45,6 +46,10 @@ export interface Product {
   grape_variety?: string;
   aromas?: string;
   elaboration?: string;
+}
+
+export interface CatalogCategories {
+  [category: string]: string[]; // category -> list of subcategories
 }
 
 export interface Table {
