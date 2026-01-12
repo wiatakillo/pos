@@ -46,6 +46,10 @@ interface TableShape {
           </div>
         </div>
 
+        @if (error()) {
+          <div class="error-banner">{{ error() }}</div>
+        }
+
         <!-- Floor Tabs -->
         <div class="floor-tabs">
           @for (floor of floors(); track floor.id) {
@@ -116,7 +120,7 @@ interface TableShape {
                 </svg>
                 <h3>Create your first floor</h3>
                 <p>Start by adding a floor to design your restaurant layout</p>
-                <button class="primary-btn" (click)="addFloor()">
+                <button class="btn btn-primary" (click)="addFloor()">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
                   </svg>
@@ -300,8 +304,8 @@ interface TableShape {
                 </div>
               </div>
               <div class="modal-footer">
-                <button class="secondary-btn" (click)="showAddTableModal = false">Cancel</button>
-                <button class="primary-btn" (click)="addTableFromModal()" [disabled]="!selectedShape">Add Table</button>
+                <button class="btn btn-secondary" (click)="showAddTableModal = false">Cancel</button>
+                <button class="btn btn-primary" (click)="addTableFromModal()" [disabled]="!selectedShape">Add Table</button>
               </div>
             </div>
           </div>
@@ -349,6 +353,15 @@ interface TableShape {
       font-size: 0.875rem;
     }
 
+    .error-banner {
+      background: rgba(220, 38, 38, 0.1);
+      color: var(--color-error);
+      padding: var(--space-3) var(--space-4);
+      border-radius: var(--radius-md);
+      margin-bottom: var(--space-3);
+      border: 1px solid rgba(220, 38, 38, 0.15);
+    }
+
     .btn {
       display: inline-flex;
       align-items: center;
@@ -365,6 +378,8 @@ interface TableShape {
     .btn-primary { background: var(--color-primary); color: white; }
     .btn-primary:hover:not(:disabled) { background: var(--color-primary-hover); }
     .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-secondary { background: var(--color-bg); color: var(--color-text); border: 1px solid var(--color-border); }
+    .btn-secondary:hover:not(:disabled) { background: var(--color-border); }
     .btn-ghost { background: transparent; color: var(--color-text-muted); }
     .btn-ghost:hover { background: var(--color-bg); color: var(--color-text); }
     .btn-sm { padding: var(--space-2) var(--space-3); font-size: 0.8125rem; }
@@ -416,7 +431,6 @@ interface TableShape {
       display: flex;
       align-items: center;
       gap: var(--space-2);
-      margin-left: auto;
       background: var(--color-primary);
       color: white;
     }
@@ -445,11 +459,11 @@ interface TableShape {
 
     .canvas-area {
       flex: 1;
-      background: 
-        linear-gradient(rgba(139, 90, 60, 0.1) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(139, 90, 60, 0.1) 1px, transparent 1px),
-        linear-gradient(135deg, #8b6b4a 0%, #a67c52 25%, #8b6b4a 50%, #a67c52 75%, #8b6b4a 100%);
-      background-size: 50px 50px, 50px 50px, 100px 100px;
+      background:
+        linear-gradient(rgba(0,0,0,0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,0,0,0.06) 1px, transparent 1px),
+        var(--color-bg);
+      background-size: 48px 48px, 48px 48px, auto;
       overflow: hidden;
       position: relative;
     }
@@ -462,8 +476,8 @@ interface TableShape {
       align-items: center;
       justify-content: center;
       text-align: center;
-      background: rgba(0,0,0,0.3);
-      color: white;
+      background: var(--color-bg);
+      color: var(--color-text);
     }
     .empty-state h3 {
       margin: 1.5rem 0 0.5rem;
@@ -472,38 +486,8 @@ interface TableShape {
     }
     .empty-state p {
       margin: 0 0 1.5rem;
-      color: #ccc;
+      color: var(--color-text-muted);
     }
-
-    .primary-btn {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 0.75rem 1.5rem;
-      background: #714b67;
-      color: white;
-      border: none;
-      border-radius: 6px;
-      font-size: 0.875rem;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.15s ease;
-    }
-    .primary-btn:hover:not(:disabled) { background: #8b5b7f; }
-    .primary-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-    .secondary-btn {
-      padding: 0.75rem 1.5rem;
-      background: #f5f5f5;
-      color: #333;
-      border: 1px solid #ddd;
-      border-radius: 6px;
-      font-size: 0.875rem;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.15s ease;
-    }
-    .secondary-btn:hover { background: #e5e5e5; }
 
     .canvas-svg {
       width: 100%;
@@ -737,6 +721,7 @@ export class TablesCanvasComponent implements OnInit, OnDestroy {
   @ViewChild('canvasArea') canvasAreaRef!: ElementRef;
   @ViewChild('canvasSvg') canvasSvgRef!: ElementRef<SVGSVGElement>;
 
+  error = signal('');
   floors = signal<Floor[]>([]);
   tables = signal<CanvasTable[]>([]);
   selectedFloorId = signal<number | null>(null);
@@ -778,17 +763,26 @@ export class TablesCanvasComponent implements OnInit, OnDestroy {
   }
 
   loadData() {
+    this.error.set('');
     this.api.getFloors().subscribe({
       next: floors => {
         this.floors.set(floors);
         if (floors.length > 0 && !this.selectedFloorId()) {
           this.selectedFloorId.set(floors[0].id!);
         }
+      },
+      error: err => {
+        this.error.set(err.error?.detail || 'Failed to load floors');
+        this.floors.set([]);
       }
     });
 
     this.api.getTablesWithStatus().subscribe({
-      next: tables => this.tables.set(tables)
+      next: tables => this.tables.set(tables),
+      error: err => {
+        this.error.set(err.error?.detail || 'Failed to load tables');
+        this.tables.set([]);
+      }
     });
   }
 
@@ -803,12 +797,14 @@ export class TablesCanvasComponent implements OnInit, OnDestroy {
   }
 
   addFloor() {
+    this.error.set('');
     const name = `Floor ${this.floors().length + 1}`;
     this.api.createFloor(name).subscribe({
       next: floor => {
         this.floors.update(f => [...f, floor]);
         this.selectedFloorId.set(floor.id!);
-      }
+      },
+      error: err => this.error.set(err.error?.detail || 'Failed to create floor')
     });
   }
 
@@ -822,10 +818,12 @@ export class TablesCanvasComponent implements OnInit, OnDestroy {
 
   saveFloorName(floor: Floor) {
     if (this.editingFloorName && this.editingFloorName !== floor.name) {
+      this.error.set('');
       this.api.updateFloor(floor.id!, { name: this.editingFloorName }).subscribe({
         next: updated => {
           this.floors.update(floors => floors.map(f => f.id === updated.id ? updated : f));
-        }
+        },
+        error: err => this.error.set(err.error?.detail || 'Failed to rename floor')
       });
     }
     this.editingFloorId.set(null);
@@ -840,12 +838,14 @@ export class TablesCanvasComponent implements OnInit, OnDestroy {
     if (!id) return;
 
     if (confirm('Delete this floor? Tables will be unassigned.')) {
+      this.error.set('');
       this.api.deleteFloor(id).subscribe({
         next: () => {
           this.floors.update(floors => floors.filter(f => f.id !== id));
           const remaining = this.floors();
           this.selectedFloorId.set(remaining.length > 0 ? remaining[0].id! : null);
-        }
+        },
+        error: err => this.error.set(err.error?.detail || 'Failed to delete floor')
       });
     }
   }
@@ -866,6 +866,7 @@ export class TablesCanvasComponent implements OnInit, OnDestroy {
   }
 
   addTableFromModal() {
+    this.error.set('');
     if (!this.selectedShape || !this.selectedFloorId()) return;
 
     const shape = this.selectedShape;
@@ -888,9 +889,11 @@ export class TablesCanvasComponent implements OnInit, OnDestroy {
           next: updated => {
             const canvasTable: CanvasTable = { ...updated, status: 'available' };
             this.tables.update(t => [...t, canvasTable]);
-          }
+          },
+          error: err => this.error.set(err.error?.detail || 'Failed to set table layout')
         });
-      }
+      },
+      error: err => this.error.set(err.error?.detail || 'Failed to create table')
     });
 
     this.showAddTableModal = false;
@@ -979,16 +982,36 @@ export class TablesCanvasComponent implements OnInit, OnDestroy {
     const table = this.selectedTable();
     if (!table?.id) return;
 
+    this.error.set('');
     this.api.updateTable(table.id, {
       name: this.selectedTableName,
       seat_count: this.selectedTableSeats
     }).subscribe({
       next: updated => {
+        // IMPORTANT:
+        // Do not overwrite local layout fields (x/y/shape/etc) with the server response.
+        // Otherwise, if the user has unsaved drag changes, editing properties would "jump"
+        // back to the DB-stored position (often the initial center).
         this.tables.update(tables =>
-          tables.map(t => t.id === updated.id ? { ...t, ...updated } : t)
+          tables.map(t => {
+            if (t.id !== updated.id) return t;
+            return {
+              ...t,
+              name: updated.name,
+              seat_count: updated.seat_count
+            };
+          })
         );
-        this.selectedTable.update(t => t ? { ...t, ...updated } : null);
-      }
+        this.selectedTable.update(t => {
+          if (!t) return null;
+          return {
+            ...t,
+            name: updated.name,
+            seat_count: updated.seat_count
+          };
+        });
+      },
+      error: err => this.error.set(err.error?.detail || 'Failed to update table')
     });
   }
 
@@ -997,11 +1020,13 @@ export class TablesCanvasComponent implements OnInit, OnDestroy {
     if (!table?.id) return;
 
     if (confirm(`Delete ${table.name}?`)) {
+      this.error.set('');
       this.api.deleteTable(table.id).subscribe({
         next: () => {
           this.tables.update(tables => tables.filter(t => t.id !== table.id));
           this.selectedTable.set(null);
-        }
+        },
+        error: err => this.error.set(err.error?.detail || 'Failed to delete table')
       });
     }
   }
@@ -1014,9 +1039,9 @@ export class TablesCanvasComponent implements OnInit, OnDestroy {
       }).toPromise()
     );
 
-    Promise.all(updates).then(() => {
-      this.hasUnsavedChanges.set(false);
-    });
+    Promise.all(updates)
+      .then(() => this.hasUnsavedChanges.set(false))
+      .catch(() => this.error.set('Failed to save layout'));
   }
 
   getSeatPositions(table: CanvasTable): { x: number; y: number; angle: number }[] {

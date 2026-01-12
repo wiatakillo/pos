@@ -32,6 +32,125 @@ class MigrationRunner:
         self.migrations_dir = migrations_dir
         self.schema_version_table = "schema_version"
 
+    def _split_sql_statements(self, sql: str) -> list[str]:
+        """
+        Split a SQL migration file into executable statements.
+        
+        Postgres (via SQLAlchemy/psycopg) commonly rejects multi-statement strings
+        in a single execute call ("cannot insert multiple commands into a prepared statement").
+        Our migrations are plain SQL (DDL/DML), so a lightweight splitter is sufficient.
+        """
+        statements: list[str] = []
+        buf: list[str] = []
+
+        in_single = False
+        in_double = False
+        in_line_comment = False
+        in_block_comment = False
+        dollar_tag: str | None = None
+
+        i = 0
+        while i < len(sql):
+            ch = sql[i]
+            nxt = sql[i + 1] if i + 1 < len(sql) else ""
+
+            # Handle line comments: -- ... \n
+            if in_line_comment:
+                buf.append(ch)
+                if ch == "\n":
+                    in_line_comment = False
+                i += 1
+                continue
+
+            # Handle block comments: /* ... */
+            if in_block_comment:
+                buf.append(ch)
+                if ch == "*" and nxt == "/":
+                    buf.append(nxt)
+                    i += 2
+                    in_block_comment = False
+                    continue
+                i += 1
+                continue
+
+            # Enter comments if not in quotes/dollar-quote
+            if not in_single and not in_double and dollar_tag is None:
+                if ch == "-" and nxt == "-":
+                    buf.append(ch)
+                    buf.append(nxt)
+                    i += 2
+                    in_line_comment = True
+                    continue
+                if ch == "/" and nxt == "*":
+                    buf.append(ch)
+                    buf.append(nxt)
+                    i += 2
+                    in_block_comment = True
+                    continue
+
+            # Handle dollar-quoted blocks: $$ ... $$ or $tag$ ... $tag$
+            if not in_single and not in_double:
+                if dollar_tag is None and ch == "$":
+                    # Try to parse a $tag$ opener.
+                    j = i + 1
+                    while j < len(sql) and (sql[j].isalnum() or sql[j] == "_"):
+                        j += 1
+                    if j < len(sql) and sql[j] == "$":
+                        dollar_tag = sql[i : j + 1]  # inclusive of ending $
+                        buf.append(dollar_tag)
+                        i = j + 1
+                        continue
+                elif dollar_tag is not None and sql.startswith(dollar_tag, i):
+                    buf.append(dollar_tag)
+                    i += len(dollar_tag)
+                    dollar_tag = None
+                    continue
+
+            # Toggle string literals
+            if dollar_tag is None and not in_double and ch == "'" and not in_single:
+                in_single = True
+                buf.append(ch)
+                i += 1
+                continue
+            if dollar_tag is None and in_single and ch == "'":
+                buf.append(ch)
+                # Escaped single quote inside string: ''
+                if nxt == "'":
+                    buf.append(nxt)
+                    i += 2
+                    continue
+                in_single = False
+                i += 1
+                continue
+
+            if dollar_tag is None and not in_single and ch == '"' and not in_double:
+                in_double = True
+                buf.append(ch)
+                i += 1
+                continue
+            if dollar_tag is None and in_double and ch == '"':
+                buf.append(ch)
+                in_double = False
+                i += 1
+                continue
+
+            # Statement terminator
+            if ch == ";" and not in_single and not in_double and dollar_tag is None:
+                stmt = "".join(buf).strip()
+                if stmt:
+                    statements.append(stmt)
+                buf = []
+                i += 1
+                continue
+
+            buf.append(ch)
+            i += 1
+
+        tail = "".join(buf).strip()
+        if tail:
+            statements.append(tail)
+        return statements
+
     def ensure_version_table(self, session: Session) -> None:
         """Create the schema_version table if it doesn't exist."""
         # Check if table exists and if version column needs to be upgraded to BIGINT
@@ -139,8 +258,10 @@ class MigrationRunner:
             # Read and execute SQL
             sql = file_path.read_text(encoding="utf-8")
             
-            # Execute the migration
-            session.exec(text(sql))
+            # Execute the migration (split into statements for Postgres compatibility)
+            statements = self._split_sql_statements(sql)
+            for stmt in statements:
+                session.exec(text(stmt))
             
             # Record the migration
             # Extract description from filename (works for both patterns)
