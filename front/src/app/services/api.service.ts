@@ -68,7 +68,7 @@ export interface Table {
   x_position?: number;
   y_position?: number;
   rotation?: number;
-  shape?: 'rectangle' | 'circle' | 'oval';
+  shape?: 'rectangle' | 'circle' | 'oval' | 'booth' | 'bar';
   width?: number;
   height?: number;
   seat_count?: number;
