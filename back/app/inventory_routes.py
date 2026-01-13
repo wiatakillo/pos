@@ -14,7 +14,8 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi.responses import StreamingResponse
 from sqlmodel import Session, select
 
 from .db import get_session
@@ -723,6 +724,90 @@ def cancel_purchase_order(
     session.commit()
     
     return {"status": "cancelled", "id": po_id}
+
+
+@router.get("/purchase-orders/{po_id}/pdf")
+def get_purchase_order_pdf(
+    po_id: int,
+    current_user: Annotated[models.User, Depends(get_current_user)],
+    session: Session = Depends(get_session),
+):
+    """Generate a professional PDF for a purchase order"""
+    from .pdf_generator import generate_purchase_order_pdf
+    
+    po = session.get(PurchaseOrder, po_id)
+    
+    if not po or po.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=404, detail="Purchase order not found")
+    
+    try:
+        # Get supplier details
+        supplier = session.get(Supplier, po.supplier_id)
+        supplier_data = {}
+        if supplier:
+            supplier_data = {
+                "name": supplier.name,
+                "code": supplier.code,
+                "contact_name": supplier.contact_name,
+                "phone": supplier.phone,
+                "email": supplier.email,
+                "address": supplier.address,
+            }
+        
+        # Get line items with inventory item details using explicit query
+        po_items = session.exec(
+            select(PurchaseOrderItem).where(PurchaseOrderItem.purchase_order_id == po_id)
+        ).all()
+        
+        items = []
+        for po_item in po_items:
+            inv_item = session.get(InventoryItem, po_item.inventory_item_id)
+            items.append({
+                "inventory_item_sku": inv_item.sku if inv_item else "-",
+                "inventory_item_name": inv_item.name if inv_item else "Unknown Item",
+                "quantity_ordered": float(po_item.quantity_ordered),
+                "unit": po_item.unit.value if po_item.unit else "piece",
+                "unit_cost_cents": po_item.unit_cost_cents or 0,
+                "line_total_cents": po_item.line_total_cents or 0,
+            })
+        
+        # Get tenant for company name
+        tenant = session.get(models.Tenant, current_user.tenant_id)
+        company_name = tenant.name if tenant else "Your Restaurant"
+        
+        # Prepare order data
+        order_data = {
+            "order_number": po.order_number,
+            "order_date": po.order_date.isoformat() if po.order_date else None,
+            "expected_date": po.expected_date.isoformat() if po.expected_date else None,
+            "status": po.status.value if po.status else "draft",
+            "notes": po.notes,
+            "subtotal_cents": po.subtotal_cents or 0,
+            "tax_cents": po.tax_cents or 0,
+            "total_cents": po.total_cents or 0,
+        }
+        
+        # Generate PDF
+        pdf_buffer = generate_purchase_order_pdf(
+            order_data=order_data,
+            supplier_data=supplier_data,
+            items=items,
+            company_name=company_name,
+        )
+        
+        # Return as downloadable PDF
+        filename = f"PO-{po.order_number}.pdf"
+        return StreamingResponse(
+            pdf_buffer,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+            }
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
 
 
 # ============ PRODUCT RECIPES ============

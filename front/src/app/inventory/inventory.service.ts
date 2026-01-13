@@ -153,6 +153,12 @@ export class InventoryService {
         return this.http.delete<{ status: string; id: number }>(`${this.apiUrl}/purchase-orders/${id}`);
     }
 
+    getPurchaseOrderPdf(id: number): Observable<Blob> {
+        return this.http.get(`${this.apiUrl}/purchase-orders/${id}/pdf`, {
+            responseType: 'blob',
+        });
+    }
+
     // ============ RECIPES ============
 
     getProductRecipe(productId: number): Observable<ProductRecipe> {
