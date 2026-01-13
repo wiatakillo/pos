@@ -2,8 +2,9 @@ from datetime import datetime, timedelta, timezone
 from contextvars import ContextVar
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
+from fastapi.security.utils import get_authorization_scheme_param
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlmodel import Session, select
@@ -16,7 +17,7 @@ from .settings import settings
 _tenant_id_ctx = ContextVar("tenant_id", default=None)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 
 
 def get_tenant_id() -> int | None:
@@ -46,14 +47,35 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     return encoded_jwt
 
 
+async def get_token_from_cookie(
+    request: Request,
+    token: Annotated[str | None, Depends(oauth2_scheme)]
+) -> str:
+    """
+    Get token from cookie (primary) or Authorization header (fallback).
+    """
+    # Try getting from cookie first
+    cookie_token = request.cookies.get("access_token")
+    if cookie_token:
+        return cookie_token
+        
+    # Fallback to Authorization header (Bearer token)
+    if token:
+        return token
+        
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Not authenticated",
+    )
+
+
 async def get_current_user(
-    token: Annotated[str, Depends(oauth2_scheme)],
+    token: Annotated[str, Depends(get_token_from_cookie)],
     session: Annotated[Session, Depends(get_session)],
 ) -> User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
     )
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])

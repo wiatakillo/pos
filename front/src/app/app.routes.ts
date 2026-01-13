@@ -16,5 +16,8 @@ export const routes: Routes = [
   { path: 'orders', canActivate: [authGuard], loadComponent: () => import('./orders/orders.component').then(m => m.OrdersComponent) },
   { path: 'settings', canActivate: [authGuard], loadComponent: () => import('./settings/settings.component').then(m => m.SettingsComponent) },
 
+  // Inventory module (lazy loaded)
+  { path: 'inventory', canActivate: [authGuard], loadChildren: () => import('./inventory/inventory.routes').then(m => m.INVENTORY_ROUTES) },
+
   { path: '**', redirectTo: '' }
 ];

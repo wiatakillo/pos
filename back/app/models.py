@@ -43,6 +43,9 @@ class Tenant(SQLModel, table=True):
     currency: str | None = Field(default=None)  # Currency symbol (€, $, £, etc.)
     stripe_secret_key: str | None = Field(default=None)  # Stripe secret key for this tenant
     stripe_publishable_key: str | None = Field(default=None)  # Stripe publishable key for this tenant
+    
+    # Inventory Management
+    inventory_tracking_enabled: bool = Field(default=False)  # Enable auto-deduction on orders
 
     users: list["User"] = Relationship(back_populates="tenant")
 
@@ -339,6 +342,7 @@ class TenantUpdate(SQLModel):
     currency: str | None = None
     stripe_secret_key: str | None = None
     stripe_publishable_key: str | None = None
+    inventory_tracking_enabled: bool | None = None
 
 
 class TenantProductCreate(SQLModel):

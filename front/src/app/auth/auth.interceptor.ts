@@ -7,15 +7,10 @@ import { ApiService } from '../services/api.service';
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const apiService = inject(ApiService);
   const router = inject(Router);
-  const token = apiService.getToken();
-
-  if (token) {
-    req = req.clone({
-      setHeaders: {
-        Authorization: `Bearer ${token}`
-      }
-    });
-  }
+  // Ensure cookies are sent with requests
+  req = req.clone({
+    withCredentials: true
+  });
 
   return next(req).pipe(
     catchError((error: HttpErrorResponse) => {

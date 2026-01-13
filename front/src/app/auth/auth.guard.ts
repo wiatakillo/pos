@@ -1,29 +1,29 @@
 import { inject } from '@angular/core';
 import { CanActivateFn, Router } from '@angular/router';
+import { catchError, map, of } from 'rxjs';
 import { ApiService } from '../services/api.service';
 
 export const authGuard: CanActivateFn = (route, state) => {
   const apiService = inject(ApiService);
   const router = inject(Router);
 
-  const token = apiService.getToken();
-  if (!token) {
-    return router.createUrlTree(['/login']);
+  // Check if we already have a user in memory
+  if (apiService.getCurrentUser()) {
+    return true;
   }
 
-  // Validate token format and expiration
-  try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    const exp = payload.exp;
-    if (exp && exp * 1000 < Date.now()) {
-      // Token expired
-      apiService.logout();
-      return router.createUrlTree(['/login']);
-    }
-    return true;
-  } catch (e) {
-    // Invalid token format
-    apiService.logout();
-    return router.createUrlTree(['/login']);
-  }
+  // If not, verify with backend
+  return apiService.checkAuth().pipe(
+    map(user => {
+      if (user) {
+        return true;
+      } else {
+        return router.createUrlTree(['/login']);
+      }
+    }),
+    catchError(() => {
+      // Logic error or network error during check
+      return of(router.createUrlTree(['/login']));
+    })
+  );
 };

@@ -56,6 +56,8 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = Field(default=True, validation_alias="SMTP_USE_TLS")
     email_from: str = Field(default="noreply@example.com", validation_alias="EMAIL_FROM")
     email_from_name: str = Field(default="POS2 System", validation_alias="EMAIL_FROM_NAME")
+    # Production mode (enables secure cookies, stricter CORS, etc.)
+    is_production: bool = Field(default=False, validation_alias="PRODUCTION")
 
     @property
     def database_url(self) -> str:

@@ -71,6 +71,38 @@ import { environment } from '../../environments/environment';
             </svg>
             <span>Orders</span>
           </a>
+          <!-- Inventory Module -->
+          <div class="nav-section">
+            <button class="nav-section-header" (click)="toggleInventory()">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+              </svg>
+              <span>Inventory</span>
+              <svg class="chevron" [class.open]="inventoryOpen()" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </button>
+            @if (inventoryOpen()) {
+              <div class="nav-submenu">
+                <a routerLink="/inventory/items" routerLinkActive="active" class="nav-sublink" (click)="closeSidebar()">
+                  <span>Items</span>
+                </a>
+                <a routerLink="/inventory/suppliers" routerLinkActive="active" class="nav-sublink" (click)="closeSidebar()">
+                  <span>Suppliers</span>
+                </a>
+                <a routerLink="/inventory/purchase-orders" routerLinkActive="active" class="nav-sublink" (click)="closeSidebar()">
+                  <span>Purchase Orders</span>
+                </a>
+                <a routerLink="/inventory/stock" routerLinkActive="active" class="nav-sublink" (click)="closeSidebar()">
+                  <span>Stock Dashboard</span>
+                </a>
+                <a routerLink="/inventory/reports" routerLinkActive="active" class="nav-sublink" (click)="closeSidebar()">
+                  <span>Reports</span>
+                </a>
+              </div>
+            }
+          </div>
+
           <a routerLink="/settings" routerLinkActive="active" class="nav-link" (click)="closeSidebar()">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="3"/>
@@ -207,6 +239,65 @@ import { environment } from '../../environments/environment';
       flex-shrink: 0;
     }
 
+    /* Inventory Section with Submenu */
+    .nav-section {
+    }
+
+    .nav-section-header {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      width: 100%;
+      padding: var(--space-3) var(--space-5);
+      background: none;
+      border: none;
+      color: var(--color-text-muted);
+      font-size: 0.9375rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      border-left: 3px solid transparent;
+    }
+
+    .nav-section-header:hover {
+      color: var(--color-text);
+      background: var(--color-bg);
+    }
+
+    .nav-section-header .chevron {
+      margin-left: auto;
+      transition: transform 0.2s ease;
+    }
+
+    .nav-section-header .chevron.open {
+      transform: rotate(180deg);
+    }
+
+    .nav-submenu {
+      background: var(--color-bg);
+      border-left: 3px solid var(--color-border);
+      margin-left: calc(var(--space-5) + 10px);
+    }
+
+    .nav-sublink {
+      display: block;
+      padding: var(--space-2) var(--space-4);
+      color: var(--color-text-muted);
+      text-decoration: none;
+      font-size: 0.875rem;
+      transition: all 0.15s ease;
+    }
+
+    .nav-sublink:hover {
+      color: var(--color-text);
+      background: var(--color-surface);
+    }
+
+    .nav-sublink.active {
+      color: var(--color-primary);
+      font-weight: 500;
+    }
+
     .sidebar-footer {
       padding: var(--space-4) var(--space-5);
       border-top: 1px solid var(--color-border);
@@ -334,11 +425,16 @@ export class SidebarComponent implements OnInit {
 
   user = signal<User | null>(null);
   sidebarOpen = signal(false);
+  inventoryOpen = signal(false);
   version = environment.version;
   commitHash = environment.commitHash;
 
   ngOnInit() {
     this.api.user$.subscribe(user => this.user.set(user));
+    // Auto-open inventory submenu if on an inventory route
+    if (this.router.url.startsWith('/inventory')) {
+      this.inventoryOpen.set(true);
+    }
   }
 
   toggleSidebar() {
@@ -347,6 +443,10 @@ export class SidebarComponent implements OnInit {
 
   closeSidebar() {
     this.sidebarOpen.set(false);
+  }
+
+  toggleInventory() {
+    this.inventoryOpen.update(v => !v);
   }
 
   logout() {

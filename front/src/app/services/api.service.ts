@@ -1,6 +1,6 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { Observable, BehaviorSubject, tap, Subject } from 'rxjs';
+import { Observable, BehaviorSubject, tap, Subject, catchError, of } from 'rxjs';
 import { environment } from '../../environments/environment';
 
 // Interfaces
@@ -69,7 +69,7 @@ export interface Table {
   x_position?: number;
   y_position?: number;
   rotation?: number;
-  shape?: 'rectangle' | 'circle' | 'oval';
+  shape?: 'rectangle' | 'circle' | 'oval' | 'booth' | 'bar';
   width?: number;
   height?: number;
   seat_count?: number;
@@ -245,7 +245,7 @@ export class ApiService {
   private apiUrl = environment.apiUrl;
   private wsUrl = environment.wsUrl;
 
-  private tokenKey = 'pos_token';
+
   private userSubject = new BehaviorSubject<User | null>(null);
   private orderUpdates = new Subject<any>();
   private ws: WebSocket | null = null;
@@ -254,38 +254,18 @@ export class ApiService {
   orderUpdates$ = this.orderUpdates.asObservable();
 
   constructor() {
-    this.loadToken();
+    this.checkAuth().subscribe();
   }
 
-  private loadToken() {
-    if (typeof localStorage !== 'undefined') {
-      const token = localStorage.getItem(this.tokenKey);
-      if (token) {
-        try {
-          const payload = JSON.parse(atob(token.split('.')[1]));
-          // Check if token is expired
-          const exp = payload.exp;
-          if (exp && exp * 1000 < Date.now()) {
-            // Token expired, clear it
-            this.logout();
-            return;
-          }
-          this.userSubject.next({
-            email: payload.sub,
-            tenant_id: payload.tenant_id
-          });
-        } catch (e) {
-          this.logout();
-        }
-      }
-    }
-  }
-
-  getToken(): string | null {
-    if (typeof localStorage !== 'undefined') {
-      return localStorage.getItem(this.tokenKey);
-    }
-    return null;
+  // Check authentication status with backend (cookies)
+  checkAuth(): Observable<User | null> {
+    return this.http.get<User>(`${this.apiUrl}/users/me`).pipe(
+      tap(user => this.userSubject.next(user)),
+      catchError(() => {
+        this.userSubject.next(null);
+        return of(null); // Return null on error
+      })
+    );
   }
 
   getCurrentUser(): User | null {
@@ -303,23 +283,26 @@ export class ApiService {
     return this.http.post<RegisterResponse>(`${this.apiUrl}/register`, null, { params });
   }
 
-  login(credentials: FormData): Observable<AuthResponse> {
-    return this.http.post<AuthResponse>(`${this.apiUrl}/token`, credentials).pipe(
-      tap(res => {
-        if (typeof localStorage !== 'undefined') {
-          localStorage.setItem(this.tokenKey, res.access_token);
-        }
-        this.loadToken();
+  login(credentials: FormData): Observable<any> {
+    return this.http.post<any>(`${this.apiUrl}/token`, credentials).pipe(
+      tap(() => {
+        this.checkAuth();
       })
     );
   }
 
   logout() {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.removeItem(this.tokenKey);
-    }
-    this.userSubject.next(null);
-    this.disconnectWebSocket();
+    this.http.post(`${this.apiUrl}/logout`, {}).subscribe({
+      next: () => {
+        this.userSubject.next(null);
+        this.disconnectWebSocket();
+      },
+      error: () => {
+        // Even if logout fails server-side, clear local state
+        this.userSubject.next(null);
+        this.disconnectWebSocket();
+      }
+    });
   }
 
   // Products
