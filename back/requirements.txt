@@ -27,3 +27,6 @@ Pillow>=10.0.0
 
 # HTTP requests for wine import
 requests>=2.31.0
+
+# Email sending
+aiosmtplib>=3.0.0

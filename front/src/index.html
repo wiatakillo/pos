@@ -9,8 +9,12 @@
   <link rel="apple-touch-icon" href="/favicon.svg">
   <script>
     // Runtime configuration from environment variables
-    window.__API_URL__ = window.__API_URL__ || 'http://178.63.8.217:8020';
-    window.__WS_URL__ = window.__WS_URL__ || 'ws://178.63.8.217:8021';
+    // Use relative URLs when behind proxy, or absolute URLs if specified
+    const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host;
+    window.__API_URL__ = window.__API_URL__ || `${protocol}//${host}/api`;
+    window.__WS_URL__ = window.__WS_URL__ || `${wsProtocol}//${host}/ws`;
     window.__STRIPE_PUBLISHABLE_KEY__ = window.__STRIPE_PUBLISHABLE_KEY__ || '';
   </script>
 </head>

@@ -1,13 +1,16 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { ApiService, Product, OrderItemCreate } from '../services/api.service';
+import { AudioService } from '../services/audio.service';
 import { environment } from '../../environments/environment';
 
 interface CartItem {
   product: Product;
   quantity: number;
   notes: string;
+  status?: string;  // Item status from backend
+  itemId?: number;  // Backend item ID for editing
 }
 
 interface PlacedOrder {
@@ -44,7 +47,7 @@ interface PlacedOrder {
             @if (tenantDescription()) {
               <p class="tenant-description">{{ tenantDescription() }}</p>
             }
-            <span class="table-badge">{{ tableName() }}</span>
+            <span class="table-badge">{{ tableGreeting() }}</span>
           </div>
         </header>
 
@@ -53,7 +56,7 @@ interface PlacedOrder {
           @if (placedOrders().length > 0) {
             <section class="section">
               <button class="section-header" (click)="ordersExpanded.set(!ordersExpanded())">
-                <span class="section-title">Your Order</span>
+                <span class="section-title">Your Order #{{ placedOrders()[0].id }}</span>
                 <span class="status-pill" [class]="'status-' + placedOrders()[0].status">
                   {{ getStatusLabel(placedOrders()[0].status) }}
                 </span>
@@ -66,26 +69,59 @@ interface PlacedOrder {
                 <div class="section-body">
                   @for (order of placedOrders(); track order.id) {
                     <div class="order-card">
-                      <div class="order-meta">
-                        <span>Order #{{ order.id }}</span>
-                        <span class="order-total">{{ formatPrice(order.total) }}</span>
+                      <div class="order-total-header">
+                        <span class="order-total">Total: {{ formatPrice(order.total) }}</span>
                       </div>
                       <div class="order-items">
-                        @for (item of order.items; track item.product.id) {
-                          <div class="order-item">
-                            <span class="item-qty">{{ item.quantity }}x</span>
+                      @for (item of getSortedOrderItems(order.items); track getProductKey(item.product)) {
+                        <div class="order-item">
+                          <div class="item-main-row">
+                            <span class="item-qty">
+                              @if (!isPaid() && item.status === 'pending' && item.itemId) {
+                                <input type="number" 
+                                  [value]="item.quantity" 
+                                  (change)="updateItemQuantity(order.id, item.itemId!, +$any($event.target).value)"
+                                  min="1" 
+                                  class="quantity-input"
+                                />
+                              } @else {
+                                {{ item.quantity }}x
+                              }
+                            </span>
                             <span class="item-name">{{ item.product.name }}</span>
                             <span class="item-price">{{ formatPrice(item.product.price_cents * item.quantity) }}</span>
+                            @if (item.status) {
+                              <span class="item-status-badge" [class]="'status-' + item.status">
+                                {{ getItemStatusLabel(item.status) }}
+                              </span>
+                            }
+                            @if (!isPaid() && item.itemId && item.status === 'pending') {
+                              <button class="remove-item-btn" (click)="removeItemFromOrder(order.id, item.itemId!)" title="Remove item">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                  <path d="M18 6L6 18M6 6l12 12"/>
+                                </svg>
+                              </button>
+                            }
+                          </div>
+                        </div>
+                      }
+                      </div>
+                      <div class="order-actions-wrapper">
+                        @if (isPaid()) {
+                          <div class="paid-banner">Paid</div>
+                        } @else {
+                          <div class="order-actions-row">
+                            @if (canCancelOrder(order)) {
+                              <button class="cancel-order-btn" (click)="cancelOrder(order.id)" [disabled]="processingPayment()">
+                                Cancel Order
+                              </button>
+                            }
+                            <button class="pay-btn" (click)="startCheckout(order)" [disabled]="processingPayment()">
+                              {{ processingPayment() ? 'Processing...' : 'Pay Now' }}
+                            </button>
                           </div>
                         }
                       </div>
-                      @if (isPaid()) {
-                        <div class="paid-banner">Paid</div>
-                      } @else {
-                        <button class="pay-btn" (click)="startCheckout(order)" [disabled]="processingPayment()">
-                          {{ processingPayment() ? 'Processing...' : 'Pay Now' }}
-                        </button>
-                      }
                     </div>
                   }
                 </div>
@@ -145,7 +181,7 @@ interface PlacedOrder {
                   </div>
                 }
                 
-                @for (product of filteredProducts(); track product.id) {
+                @for (product of filteredProducts(); track getProductKey(product)) {
                   <div class="product-card">
                     @if (product.image_filename) {
                       <img [src]="getProductImageUrl(product)" class="product-img" alt="">
@@ -202,7 +238,20 @@ interface PlacedOrder {
                       
                       <!-- Description -->
                       @if (product.detailed_description || product.description) {
-                        <p class="product-description">{{ product.detailed_description || product.description }}</p>
+                        <button class="description-toggle" (click)="toggleDescription(product.id!); $event.stopPropagation()">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 6v12M6 12h12"/>
+                          </svg>
+                          <span>Description</span>
+                          <svg class="chevron-icon" [class.open]="showDescriptionFor() === product.id" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <polyline points="6,9 12,15 18,9"/>
+                          </svg>
+                        </button>
+                        @if (showDescriptionFor() === product.id) {
+                          <div class="description-content">
+                            <p class="product-description">{{ product.detailed_description || product.description }}</p>
+                          </div>
+                        }
                       }
                       
                       <!-- Aromas -->
@@ -257,7 +306,7 @@ interface PlacedOrder {
             </div>
             
             <div class="cart-items">
-              @for (item of cart(); track item.product.id) {
+              @for (item of cart(); track getProductKey(item.product)) {
                 <div class="cart-item">
                   <div class="cart-item-row">
                     <span class="cart-qty">{{ item.quantity }}x</span>
@@ -287,6 +336,38 @@ interface PlacedOrder {
         <!-- Success Toast -->
         @if (showSuccessToast()) {
           <div class="toast">Items added to Order #{{ lastOrderId() }}</div>
+        }
+
+        <!-- Customer Name Modal -->
+        @if (showNameModal()) {
+          <div class="modal-overlay" (click)="skipName()">
+            <div class="modal" (click)="$event.stopPropagation()">
+              <div class="modal-header">
+                <h3>What's your name?</h3>
+                <button class="close-btn" (click)="skipName()">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 6L6 18M6 6l12 12"/>
+                  </svg>
+                </button>
+              </div>
+              <div class="modal-body">
+                <p class="name-prompt-text">(optional - you can skip this)</p>
+                <input 
+                  type="text" 
+                  class="name-input" 
+                  [(ngModel)]="nameInputValue"
+                  placeholder="Enter your name"
+                  (keyup.enter)="confirmName()"
+                  #nameInput
+                  autofocus
+                />
+              </div>
+              <div class="modal-footer">
+                <button class="btn-skip" (click)="skipName()">Skip</button>
+                <button class="btn-ok" (click)="confirmName()">OK</button>
+              </div>
+            </div>
+          </div>
         }
 
         <!-- Payment Modal -->
@@ -432,8 +513,10 @@ interface PlacedOrder {
     .status-pill.status-pending { background: rgba(245, 158, 11, 0.15); color: var(--color-warning); }
     .status-pill.status-preparing { background: rgba(59, 130, 246, 0.15); color: #3B82F6; }
     .status-pill.status-ready { background: var(--color-success-light); color: var(--color-success); }
+    .status-pill.status-partially_delivered { background: rgba(59, 130, 246, 0.15); color: #3B82F6; }
     .status-pill.status-paid { background: var(--color-success-light); color: var(--color-success); }
     .status-pill.status-completed { background: var(--color-bg); color: var(--color-text-muted); }
+    .status-pill.status-cancelled { background: var(--color-bg); color: var(--color-text-muted); }
 
     .count-badge {
       background: var(--color-bg);
@@ -448,15 +531,108 @@ interface PlacedOrder {
 
     .section-body { padding: 0 16px 16px; }
 
-    .order-card { background: var(--color-bg); border-radius: var(--radius-md); padding: 16px; }
-    .order-meta { display: flex; justify-content: space-between; margin-bottom: 12px; font-weight: 600; }
-    .order-total { color: var(--color-primary); }
-    .order-items { margin-bottom: 16px; }
-    .order-item { display: flex; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--color-border); font-size: 0.9375rem; }
+    .order-card { background: none; border-radius: 0; padding: 0; margin: 0; }
+    .order-total-header { 
+      display: flex; 
+      justify-content: flex-end; 
+      margin-bottom: 12px; 
+      padding: 0;
+      padding-top: 0;
+      font-weight: 600; 
+    }
+    .order-total { color: var(--color-primary); font-size: 1rem; }
+    .order-items { margin-bottom: 16px; padding: 0; }
+    .order-item { padding: 8px 0; border-bottom: 1px solid var(--color-border); font-size: 0.9375rem; }
     .order-item:last-child { border-bottom: none; }
-    .item-qty { font-weight: 600; color: var(--color-primary); width: 32px; }
-    .item-name { flex: 1; }
+    .order-actions-wrapper { padding: 0; padding-top: 0; }
+    .item-main-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .item-qty { 
+      font-weight: 600; 
+      color: var(--color-primary); 
+      min-width: 50px; 
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+    }
+    .quantity-input {
+      width: 50px;
+      padding: 4px 6px;
+      border: 1px solid var(--color-border);
+      border-radius: 4px;
+      font-size: 0.9375rem;
+      text-align: center;
+      background: var(--color-surface);
+      color: var(--color-text);
+      box-sizing: border-box;
+    }
+    .quantity-input:focus {
+      outline: none;
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 2px var(--color-primary-light);
+    }
+    .item-name { flex: 1; min-width: 0; }
     .item-price { color: var(--color-text-muted); }
+    .item-status-badge {
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      display: inline-block;
+      white-space: nowrap;
+    }
+    .item-status-badge.status-pending { 
+      background: rgba(245, 158, 11, 0.15); 
+      color: var(--color-warning); 
+    }
+    .item-status-badge.status-preparing { 
+      background: rgba(59, 130, 246, 0.15); 
+      color: #3B82F6; 
+    }
+    .item-status-badge.status-ready { 
+      background: var(--color-success-light); 
+      color: var(--color-success); 
+    }
+    .item-status-badge.status-delivered { 
+      background: var(--color-bg); 
+      color: var(--color-text-muted); 
+    }
+    .item-status-badge.status-cancelled { 
+      background: var(--color-bg); 
+      color: var(--color-text-muted); 
+    }
+    .remove-item-btn {
+      background: none;
+      border: none;
+      color: var(--color-error);
+      cursor: pointer;
+      padding: 4px;
+      display: flex;
+      align-items: center;
+      opacity: 0.7;
+      transition: opacity 0.15s;
+    }
+    .remove-item-btn:hover { opacity: 1; }
+    .order-actions-row {
+      display: flex;
+      gap: 8px;
+    }
+    .cancel-order-btn {
+      flex: 1;
+      padding: 14px;
+      background: var(--color-bg);
+      color: var(--color-error);
+      border: 1px solid var(--color-error);
+      border-radius: var(--radius-md);
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .cancel-order-btn:hover:not(:disabled) {
+      background: var(--color-error);
+      color: white;
+    }
+    .cancel-order-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
     .paid-banner {
       text-align: center;
@@ -485,13 +661,16 @@ interface PlacedOrder {
     .product-card {
       display: flex;
       gap: 14px;
-      padding: 14px;
-      background: var(--color-bg);
-      border-radius: var(--radius-lg);
-      margin-bottom: 10px;
+      padding: 14px 0;
+      background: none;
+      border-bottom: 1px solid var(--color-border);
+      margin-bottom: 0;
     }
 
-    .product-card:last-child { margin-bottom: 0; }
+    .product-card:last-child { 
+      border-bottom: none; 
+      margin-bottom: 0;
+    }
 
     .category-filters {
       display: flex;
@@ -704,11 +883,45 @@ interface PlacedOrder {
       color: var(--color-text);
     }
 
+    .description-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 12px;
+      margin-top: 8px;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: 20px;
+      color: var(--color-text-muted);
+      font-size: 0.8125rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+      touch-action: manipulation;
+    }
+
+    .description-toggle:active {
+      background: var(--color-bg);
+    }
+
+    .description-toggle svg:first-child {
+      color: var(--color-primary);
+    }
+
+    .description-content {
+      margin-top: 10px;
+      padding: 0;
+      background: none;
+      border: none;
+      border-radius: 0;
+      animation: slideIn 0.2s ease;
+    }
+
     .product-description {
       font-size: 0.875rem;
       color: var(--color-text);
       line-height: 1.5;
-      margin: 8px 0;
+      margin: 0;
     }
 
     .product-aromas,
@@ -926,6 +1139,30 @@ interface PlacedOrder {
     .payment-success { background: var(--color-success-light); color: var(--color-success); padding: 12px; border-radius: var(--radius-md); text-align: center; margin-top: 16px; font-weight: 600; }
 
     .modal-footer { display: flex; gap: 12px; padding: 16px; border-top: 1px solid var(--color-border); }
+    .name-prompt-text {
+      color: var(--color-text-muted);
+      font-size: 0.875rem;
+      margin: 0 0 16px 0;
+      text-align: center;
+    }
+
+    .name-input {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      font-size: 1rem;
+      background: var(--color-bg);
+      color: var(--color-text);
+    }
+
+    .name-input:focus {
+      outline: none;
+      border-color: var(--color-primary);
+    }
+
+    .btn-skip { flex: 1; padding: 12px; background: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--radius-md); font-weight: 500; cursor: pointer; color: var(--color-text); }
+    .btn-ok { flex: 1; padding: 12px; background: var(--color-primary); color: white; border: none; border-radius: var(--radius-md); font-weight: 600; cursor: pointer; margin-left: 12px; }
     .btn-cancel { flex: 1; padding: 12px; background: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--radius-md); font-weight: 500; cursor: pointer; }
     .btn-pay, .btn-done { flex: 2; padding: 12px; background: var(--color-primary); color: white; border: none; border-radius: var(--radius-md); font-weight: 600; cursor: pointer; }
     .btn-pay:disabled { opacity: 0.6; cursor: not-allowed; }
@@ -945,6 +1182,14 @@ export class MenuComponent implements OnInit {
   availableSubcategories = signal<string[]>([]);
   tenantName = signal('');
   tableName = signal('');
+  tableGreeting = computed(() => {
+    const name = this.customerName();
+    const table = this.tableName();
+    if (name) {
+      return `Hey, ${name}, you are at ${table}`;
+    }
+    return table;
+  });
   tenantLogo = signal<string | null>(null);
   tenantDescription = signal<string | null>(null);
   tenantPhone = signal<string | null>(null);
@@ -961,19 +1206,172 @@ export class MenuComponent implements OnInit {
   ordersExpanded = signal(true);
   menuExpanded = signal(true);
   showIngredientsFor = signal<number | null>(null);
+  showDescriptionFor = signal<number | null>(null);
   private tableToken = '';
   private tenantId = 0;
   private ws: WebSocket | null = null;
+  private sessionId = '';
+  customerName = signal('');
+  private audio = inject(AudioService);
 
   ngOnInit() {
     this.tableToken = this.route.snapshot.params['token'];
+    this.initializeSession();
     this.loadMenu();
     this.loadStoredOrders();
+  }
+
+  // Customer Name Modal
+  showNameModal = signal(false);
+  nameInputValue = '';
+
+  private initializeSession() {
+    // Generate or get session_id from localStorage
+    const sessionKey = `session_${this.tableToken}`;
+    let sessionId = localStorage.getItem(sessionKey);
+    
+    if (!sessionId) {
+      // Generate new UUID v4
+      sessionId = this.generateUUID();
+      localStorage.setItem(sessionKey, sessionId);
+    }
+    this.sessionId = sessionId;
+
+    // Get or prompt for customer name (optional)
+    const nameKey = `customer_name_${this.tableToken}`;
+    let customerName = localStorage.getItem(nameKey);
+    
+    if (!customerName) {
+      // Show modal for customer name (optional - user can skip)
+      this.showNameModal.set(true);
+    } else {
+      this.customerName.set(customerName);
+    }
+  }
+
+  skipName() {
+    this.showNameModal.set(false);
+    this.nameInputValue = '';
+    // Customer name remains empty, which is fine
+  }
+
+  confirmName() {
+    const name = this.nameInputValue.trim();
+    if (name) {
+      this.customerName.set(name);
+      localStorage.setItem(`customer_name_${this.tableToken}`, name);
+    }
+    this.showNameModal.set(false);
+    this.nameInputValue = '';
+  }
+
+  private generateUUID(): string {
+    // Generate UUID v4
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
   }
 
   ngOnDestroy() { this.ws?.close(); }
 
   loadStoredOrders() {
+    // First try to load from backend using session_id
+    if (this.sessionId) {
+      this.api.getCurrentOrder(this.tableToken, this.sessionId).subscribe({
+        next: (response) => {
+          if (response.order) {
+            // Validate order belongs to this session
+            if (response.order.session_id === this.sessionId) {
+              // Filter out removed items for customer view
+              const activeItems = response.order.items.filter((item: any) => !item.removed_by_customer);
+              const order: PlacedOrder = {
+                id: response.order.id,
+                items: activeItems.map((item: any) => ({
+                  product: {
+                    id: item.product_id,
+                    name: item.product_name,
+                    price_cents: item.price_cents
+                  } as Product,
+                  quantity: item.quantity,
+                  notes: item.notes || '',
+                  status: item.status,  // Include item status
+                  itemId: item.id  // Include backend item ID for editing
+                } as CartItem)),
+                notes: response.order.notes || '',
+                total: response.order.total_cents,
+                status: response.order.status
+              };
+              this.placedOrders.set([order]);
+              this.saveOrders();
+            } else {
+              // Order mismatch - clear and try localStorage
+              this.loadStoredOrdersFromLocalStorage();
+            }
+          } else {
+            // No order from backend - try localStorage
+            this.loadStoredOrdersFromLocalStorage();
+          }
+        },
+        error: () => {
+          // Backend error - fallback to localStorage
+          this.loadStoredOrdersFromLocalStorage();
+        }
+      });
+    } else {
+      // No session_id yet - use localStorage
+      this.loadStoredOrdersFromLocalStorage();
+    }
+  }
+
+  private loadStoredOrdersFromLocalStorage() {
+    // Always try to load from backend first if we have a sessionId (to get proper itemId and status)
+    if (this.sessionId) {
+      this.api.getCurrentOrder(this.tableToken, this.sessionId).subscribe({
+        next: (response) => {
+          if (response.order) {
+            // Validate order belongs to this session
+            if (response.order.session_id === this.sessionId) {
+              // Filter out removed items for customer view
+              const activeItems = response.order.items.filter((item: any) => !item.removed_by_customer);
+              const order: PlacedOrder = {
+                id: response.order.id,
+                items: activeItems.map((item: any) => ({
+                  product: {
+                    id: item.product_id,
+                    name: item.product_name,
+                    price_cents: item.price_cents
+                  } as Product,
+                  quantity: item.quantity,
+                  notes: item.notes || '',
+                  status: item.status,  // Include item status
+                  itemId: item.id  // Include backend item ID for editing
+                } as CartItem)),
+                notes: response.order.notes || '',
+                total: response.order.total_cents,
+                status: response.order.status
+              };
+              this.placedOrders.set([order]);
+              this.saveOrders();
+              return; // Successfully loaded from backend, don't use localStorage
+            }
+          }
+          // Backend returned no order or order mismatch - try localStorage as fallback
+          this.loadFromLocalStorageFallback();
+        },
+        error: () => {
+          // Backend error - try localStorage as fallback
+          this.loadFromLocalStorageFallback();
+        }
+      });
+    } else {
+      // No sessionId - use localStorage only
+      this.loadFromLocalStorageFallback();
+    }
+  }
+
+  private loadFromLocalStorageFallback() {
     const stored = localStorage.getItem(`orders_${this.tableToken}`);
     if (stored) {
       try {
@@ -992,15 +1390,35 @@ export class MenuComponent implements OnInit {
   saveOrders() { localStorage.setItem(`orders_${this.tableToken}`, JSON.stringify(this.placedOrders())); }
 
   connectWebSocket() {
-    if (this.ws || this.tenantId === 0) return;
+    if (this.ws || !this.tableToken) return;
     const wsUrl = environment.wsUrl.replace(/^http/, 'ws').replace(/^https/, 'wss');
-    this.ws = new WebSocket(`${wsUrl}/ws/${this.tenantId}`);
+    this.ws = new WebSocket(`${wsUrl}/ws/table/${this.tableToken}`);
     this.ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
         if (data.type === 'status_update') {
+          // Order-level status update (customer-specific sound)
+          this.audio.playCustomerStatusChange();
           this.placedOrders.update(orders => orders.map(o => o.id === data.order_id ? { ...o, status: data.status } : o));
           this.saveOrders();
+          // Reload order to ensure item statuses are up to date
+          this.loadStoredOrders();
+        } else if (data.type === 'item_status_update') {
+          // Item-level status update - reload order to get updated item statuses (customer-specific sound)
+          this.audio.playCustomerStatusChange();
+          // Update order status if provided
+          if (data.status) {
+            this.placedOrders.update(orders => 
+              orders.map(o => o.id === data.order_id ? { ...o, status: data.status } : o)
+            );
+          }
+          // Reload order to get updated item statuses
+          this.loadStoredOrders();
+        } else if (data.type === 'item_removed' || data.type === 'item_updated' || data.type === 'order_cancelled' || data.type === 'items_added' || data.type === 'new_order') {
+          // Play sound for order modifications (customer-specific sound)
+          this.audio.playCustomerOrderChange();
+          // Reload order to get updated items with proper itemId values
+          this.loadStoredOrders();
         }
       } catch { }
     };
@@ -1010,14 +1428,22 @@ export class MenuComponent implements OnInit {
   loadMenu() {
     this.api.getMenu(this.tableToken).subscribe({
       next: data => {
-        this.products.set(data.products);
+        // Ensure all products have _source field for proper tracking
+        const productsWithSource = data.products.map((product: Product) => ({
+          ...product,
+          _source: product._source || 'unknown'
+        }));
+        this.products.set(productsWithSource);
         this.tenantName.set(data.tenant_name);
         this.tableName.set(data.table_name);
         this.tenantId = data.tenant_id;
         
+        // Connect to WebSocket for table-specific updates
+        this.connectWebSocket();
+        
         // Extract available main categories from products
         const categories = new Set<string>();
-        data.products.forEach((product: Product) => {
+        productsWithSource.forEach((product: Product) => {
           if (product.category) {
             categories.add(product.category);
           }
@@ -1206,6 +1632,12 @@ export class MenuComponent implements OnInit {
       }
     }
     
+    // Ensure all products have _source field for proper tracking
+    filtered = filtered.map(p => ({
+      ...p,
+      _source: p._source || 'unknown'
+    }));
+    
     this.filteredProducts.set(filtered);
   }
 
@@ -1267,23 +1699,50 @@ export class MenuComponent implements OnInit {
     }
   }
 
+  // Generate a unique key for a product to handle duplicate IDs
+  getProductKey(product: Product): string {
+    // Use a combination of source, id, name, and price to create a unique key
+    // This handles cases where TenantProduct and Product have the same ID
+    // The source field distinguishes between "tenant_product" and "product" tables
+    if (!product) return 'null-product';
+    const source = product._source || 'unknown';
+    const id = product.id ?? 'no-id';
+    const name = product.name || 'no-name';
+    const price = product.price_cents ?? 0;
+    return `${source}-${id}-${name}-${price}`;
+  }
+
   toggleIngredients(productId: number) {
     this.showIngredientsFor.update(current => current === productId ? null : productId);
   }
 
+  toggleDescription(productId: number) {
+    this.showDescriptionFor.update(current => current === productId ? null : productId);
+  }
+
   addToCart(product: Product) {
+    const productKey = this.getProductKey(product);
     this.cart.update(items => {
-      const existing = items.find(i => i.product.id === product.id);
-      if (existing) { return items.map(i => i.product.id === product.id ? { ...i, quantity: i.quantity + 1 } : i); }
+      const existing = items.find(i => this.getProductKey(i.product) === productKey);
+      if (existing) { 
+        return items.map(i => this.getProductKey(i.product) === productKey ? { ...i, quantity: i.quantity + 1 } : i); 
+      }
       return [...items, { product, quantity: 1, notes: '' }];
     });
   }
 
-  incrementItem(item: CartItem) { this.cart.update(items => items.map(i => i.product.id === item.product.id ? { ...i, quantity: i.quantity + 1 } : i)); }
+  incrementItem(item: CartItem) { 
+    const productKey = this.getProductKey(item.product);
+    this.cart.update(items => items.map(i => this.getProductKey(i.product) === productKey ? { ...i, quantity: i.quantity + 1 } : i)); 
+  }
 
   decrementItem(item: CartItem) {
-    if (item.quantity <= 1) { this.cart.update(items => items.filter(i => i.product.id !== item.product.id)); }
-    else { this.cart.update(items => items.map(i => i.product.id === item.product.id ? { ...i, quantity: i.quantity - 1 } : i)); }
+    const productKey = this.getProductKey(item.product);
+    if (item.quantity <= 1) { 
+      this.cart.update(items => items.filter(i => this.getProductKey(i.product) !== productKey)); 
+    } else { 
+      this.cart.update(items => items.map(i => this.getProductKey(i.product) === productKey ? { ...i, quantity: i.quantity - 1 } : i)); 
+    }
   }
 
   getTotalItems(): number { return this.cart().reduce((sum, item) => sum + item.quantity, 0); }
@@ -1294,44 +1753,86 @@ export class MenuComponent implements OnInit {
   }
 
   getStatusLabel(status: string): string {
-    const labels: Record<string, string> = { pending: 'Pending', preparing: 'Preparing', ready: 'Ready', paid: 'Paid', completed: 'Done' };
+    const labels: Record<string, string> = { 
+      pending: 'Pending', 
+      preparing: 'Preparing', 
+      ready: 'Ready', 
+      partially_delivered: 'Partially Delivered',
+      paid: 'Paid', 
+      completed: 'Done',
+      cancelled: 'Cancelled'
+    };
     return labels[status] || status;
   }
 
+  getItemStatusLabel(status: string): string {
+    const labels: Record<string, string> = {
+      pending: 'Pending',
+      preparing: 'Preparing',
+      ready: 'Ready',
+      delivered: 'Delivered',
+      cancelled: 'Cancelled'
+    };
+    return labels[status] || status;
+  }
+
+  getSortedOrderItems(items: CartItem[]): CartItem[] {
+    // Sort items by itemId descending (newest first)
+    // Items with higher IDs were created later, so they appear on top
+    return [...items].sort((a, b) => {
+      // If both have itemId, sort by itemId descending (newest first)
+      if (a.itemId && b.itemId) {
+        return b.itemId - a.itemId;
+      }
+      // If only one has itemId, prioritize it
+      if (a.itemId && !b.itemId) return -1;
+      if (!a.itemId && b.itemId) return 1;
+      // If neither has itemId, maintain original order
+      return 0;
+    });
+  }
+
   submitOrder() {
-    const items: OrderItemCreate[] = this.cart().map(item => ({ product_id: item.product.id!, quantity: item.quantity, notes: item.notes || undefined }));
+    const items: OrderItemCreate[] = this.cart().map(item => ({ 
+      product_id: item.product.id!, 
+      quantity: item.quantity, 
+      notes: item.notes || undefined,
+      source: item.product._source || undefined  // Include source to help backend identify correct product
+    }));
     this.submitting.set(true);
-    this.api.submitOrder(this.tableToken, { items, notes: this.orderNotes || undefined }).subscribe({
+    this.api.submitOrder(this.tableToken, { 
+      items, 
+      notes: this.orderNotes || undefined,
+      session_id: this.sessionId,
+      customer_name: this.customerName() || undefined
+    }).subscribe({
       next: (response: any) => {
         const orderId = response.order_id;
         const isNewOrder = response.status === 'created';
-        if (isNewOrder) {
-          const newOrder: PlacedOrder = { id: orderId, items: [...this.cart()], notes: this.orderNotes, total: this.getTotal(), status: 'pending' };
-          this.placedOrders.set([newOrder]);
-        } else {
-          const currentOrder = this.placedOrders().find(o => o.id === orderId);
-          if (currentOrder) {
-            const updatedItems = [...currentOrder.items];
-            for (const cartItem of this.cart()) {
-              const existing = updatedItems.find(i => i.product.id === cartItem.product.id);
-              if (existing) { existing.quantity += cartItem.quantity; }
-              else { updatedItems.push(cartItem); }
-            }
-            const updatedOrder: PlacedOrder = { ...currentOrder, items: updatedItems, total: updatedItems.reduce((sum, i) => sum + i.product.price_cents * i.quantity, 0) };
-            this.placedOrders.set([updatedOrder]);
-          } else {
-            const newOrder: PlacedOrder = { id: orderId, items: [...this.cart()], notes: this.orderNotes, total: this.getTotal(), status: 'pending' };
-            this.placedOrders.set([newOrder]);
-          }
+        
+        // Validate session_id matches (security check)
+        if (response.session_id && response.session_id !== this.sessionId) {
+          console.warn('Session ID mismatch - order may belong to different session');
         }
-        this.saveOrders();
+        
+        // Update customer name if returned from backend
+        if (response.customer_name && response.customer_name !== this.customerName()) {
+          this.customerName.set(response.customer_name);
+          localStorage.setItem(`customer_name_${this.tableToken}`, response.customer_name);
+        }
+        
+        // Clear cart and show success message
+        this.cart.set([]);
+        this.orderNotes = '';
         this.lastOrderId.set(orderId);
         this.showSuccessToast.set(true);
         setTimeout(() => this.showSuccessToast.set(false), 3000);
-        this.cart.set([]);
-        this.orderNotes = '';
-        this.submitting.set(false);
         this.ordersExpanded.set(true);
+        this.submitting.set(false);
+        
+        // Reload order from backend to get proper itemId values for newly added items
+        // This ensures items are immediately editable without requiring a page reload
+        this.loadStoredOrders();
       },
       error: () => { this.submitting.set(false); alert('Failed to place order.'); }
     });
@@ -1343,7 +1844,13 @@ export class MenuComponent implements OnInit {
   cardError = signal('');
   processingPayment = signal(false);
   paymentSuccess = signal(false);
-  isPaid = signal(false);
+  // isPaid is computed from the current order status, not localStorage
+  isPaid = computed(() => {
+    const orders = this.placedOrders();
+    if (orders.length === 0) return false;
+    // Check if the current order is paid
+    return orders[0].status === 'paid';
+  });
   private stripe: any = null;
   private cardElement: any = null;
   private clientSecret = '';
@@ -1398,8 +1905,8 @@ export class MenuComponent implements OnInit {
         next: () => {
           this.processingPayment.set(false);
           this.paymentSuccess.set(true);
-          this.isPaid.set(true);
-          localStorage.setItem(`paid_${this.tableToken}`, 'true');
+          // Reload order to get updated status from backend
+          this.loadStoredOrders();
         },
         error: () => { this.processingPayment.set(false); this.cardError.set('Payment confirmed but failed to update order.'); }
       });
@@ -1411,9 +1918,101 @@ export class MenuComponent implements OnInit {
   finishPayment() {
     this.showPaymentModal.set(false);
     this.paymentSuccess.set(false);
-    // Clear the order from localStorage since it's paid
-    this.placedOrders.set([]);
-    localStorage.removeItem(`orders_${this.tableToken}`);
+    // Reload order to get updated status from backend
+    this.loadStoredOrders();
+    // If order is paid, it will be cleared from view automatically
+  }
+
+  removeItemFromOrder(orderId: number, itemId: number) {
+    if (!confirm('Are you sure you want to remove this item from your order?')) {
+      return;
+    }
+    
+    // Find the order item to get product ID for cart update
+    const currentOrder = this.placedOrders().find(o => o.id === orderId);
+    const itemToRemove = currentOrder?.items.find(item => item.itemId === itemId);
+    const productId = itemToRemove?.product.id;
+    
+    // Use itemId directly (now always available after loadStoredOrders fix)
+    this.api.removeOrderItem(this.tableToken, orderId, itemId, this.sessionId).subscribe({
+      next: (removeResponse: any) => {
+        // Reload current order to get updated items
+        this.loadStoredOrders();
+        // Update cart if item was in cart
+        if (productId) {
+          this.cart.update(items => items.filter(i => i.product.id !== productId));
+        }
+      },
+      error: (err) => {
+        const errorMsg = err.error?.detail || 'Failed to remove item';
+        if (errorMsg.includes('delivered')) {
+          alert('Cannot remove items that have already been delivered');
+        } else {
+          alert(errorMsg);
+        }
+      }
+    });
+  }
+
+  canCancelOrder(order: PlacedOrder): boolean {
+    // Order cannot be canceled if:
+    // 1. Order is paid or completed
+    if (order.status === 'paid' || order.status === 'completed' || order.status === 'cancelled') {
+      return false;
+    }
+    
+    // 2. Any item is not pending (preparing, ready, or delivered)
+    const hasNonPendingItems = order.items.some(item => {
+      const itemStatus = item.status || 'pending';
+      return itemStatus !== 'pending' && itemStatus !== 'cancelled';
+    });
+    
+    return !hasNonPendingItems;
+  }
+
+  cancelOrder(orderId: number) {
+    if (!confirm('Are you sure you want to cancel this entire order?')) {
+      return;
+    }
+    
+    this.api.cancelOrder(this.tableToken, orderId, this.sessionId).subscribe({
+      next: () => {
+        // Clear the order from localStorage
+        this.placedOrders.set([]);
+        localStorage.removeItem(`orders_${this.tableToken}`);
+        alert('Order cancelled');
+      },
+      error: (err) => {
+        const errorMsg = err.error?.detail || 'Failed to cancel order';
+        if (errorMsg.includes('delivered')) {
+          alert('Cannot cancel order with delivered items');
+        } else if (errorMsg.includes('preparing') || errorMsg.includes('ready')) {
+          alert('Cannot cancel order with items that are being prepared or ready');
+        } else {
+          alert(errorMsg);
+        }
+      }
+    });
+  }
+
+  updateItemQuantity(orderId: number, itemId: number, quantity: number) {
+    if (quantity <= 0) {
+      alert('Quantity must be at least 1');
+      return;
+    }
+    this.api.updateOrderItemQuantity(this.tableToken, orderId, itemId, quantity, this.sessionId).subscribe({
+      next: () => {
+        this.loadStoredOrders();
+      },
+      error: (err) => {
+        const errorMsg = err.error?.detail || 'Failed to update quantity';
+        if (errorMsg.includes('preparing') || errorMsg.includes('ready') || errorMsg.includes('delivered')) {
+          alert('Cannot modify items that are being prepared, ready, or delivered');
+        } else {
+          alert(errorMsg);
+        }
+      }
+    });
   }
 
   getWineTypeClass(wineType: string): string {

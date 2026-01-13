@@ -2,6 +2,9 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Install git for commit hash generation (needed for build script)
+RUN apk add --no-cache git
+
 # Copy package files
 COPY package*.json ./
 
@@ -10,6 +13,14 @@ RUN npm ci
 
 # Copy source code
 COPY . .
+
+# Accept commit hash as build argument (can be passed from parent directory)
+# If not provided, the script will try git or use "unknown"
+ARG COMMIT_HASH=
+ENV COMMIT_HASH=${COMMIT_HASH}
+
+# Generate commit hash file (script will use COMMIT_HASH env var if git is not available)
+RUN node scripts/get-commit-hash.js
 
 # Build the application for production (static output)
 RUN npm run build -- --configuration production-static

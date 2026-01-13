@@ -273,7 +273,17 @@ import { SidebarComponent } from '../shared/sidebar.component';
 
           <!-- Payment Settings -->
           <div class="form-section">
-            <h2>Payment Settings</h2>
+            <div class="section-header-with-link">
+              <h2>Payment Settings</h2>
+              <a href="https://dashboard.stripe.com/" target="_blank" rel="noopener noreferrer" class="external-link">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/>
+                  <polyline points="15,3 21,3 21,9"/>
+                  <line x1="10" y1="14" x2="21" y2="3"/>
+                </svg>
+                Stripe Dashboard
+              </a>
+            </div>
             <div class="form-group">
               <label for="currency">Currency</label>
               <input
@@ -390,6 +400,40 @@ import { SidebarComponent } from '../shared/sidebar.component';
         margin-bottom: var(--space-4);
         padding-bottom: var(--space-2);
         border-bottom: 1px solid var(--color-border);
+      }
+
+      .section-header-with-link {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: var(--space-4);
+        padding-bottom: var(--space-2);
+        border-bottom: 1px solid var(--color-border);
+
+        h2 {
+          margin-bottom: 0;
+          padding-bottom: 0;
+          border-bottom: none;
+        }
+      }
+
+      .external-link {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-2);
+        font-size: 0.875rem;
+        color: var(--color-primary);
+        text-decoration: none;
+        font-weight: 500;
+        transition: color 0.15s ease;
+
+        &:hover {
+          color: var(--color-primary-hover);
+        }
+
+        svg {
+          flex-shrink: 0;
+        }
       }
 
       .section-hint {

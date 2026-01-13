@@ -135,7 +135,61 @@ import { CommonModule } from '@angular/common';
               <p>Add your first product to get started</p>
               <button class="btn btn-primary" (click)="showAddForm.set(true)">Add Product</button>
             </div>
+          } @else if (filteredProducts().length === 0) {
+            <div class="empty-state">
+              <div class="empty-icon">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/>
+                </svg>
+              </div>
+              <h3>No products match the selected filters</h3>
+              <p>Try selecting a different category or subcategory</p>
+              <button class="btn btn-secondary" (click)="selectCategory(null)">Clear Filters</button>
+            </div>
           } @else {
+            <!-- Filter Buttons -->
+            <div class="filters-section">
+              <!-- Category Filters -->
+              @if (availableCategories().length > 0) {
+                <div class="category-filters">
+                  <button 
+                    class="filter-btn" 
+                    [class.active]="selectedCategory() === null"
+                    (click)="selectCategory(null)">
+                    All Categories
+                  </button>
+                  @for (category of availableCategories(); track category) {
+                    <button 
+                      class="filter-btn" 
+                      [class.active]="selectedCategory() === category"
+                      (click)="selectCategory(category)">
+                      {{ category }}
+                    </button>
+                  }
+                </div>
+              }
+              
+              <!-- Subcategory Filters (shown when category is selected) -->
+              @if (selectedCategory() && availableSubcategoriesForFilter().length > 0) {
+                <div class="subcategory-filters">
+                  <button 
+                    class="filter-btn filter-btn-sub" 
+                    [class.active]="selectedSubcategory() === null"
+                    (click)="selectSubcategory(null)">
+                    All {{ selectedCategory() }}
+                  </button>
+                  @for (subcategory of availableSubcategoriesForFilter(); track subcategory) {
+                    <button 
+                      class="filter-btn filter-btn-sub" 
+                      [class.active]="selectedSubcategory() === subcategory"
+                      (click)="selectSubcategory(subcategory)">
+                      {{ subcategory }}
+                    </button>
+                  }
+                </div>
+              }
+            </div>
+
             <div class="table-card">
               <table>
                 <thead>
@@ -149,12 +203,12 @@ import { CommonModule } from '@angular/common';
                   </tr>
                 </thead>
                 <tbody>
-                  @for (product of products(); track product.id) {
+                  @for (product of filteredProducts(); track product.id) {
                     <tr>
                       <td>
                         @if (product.image_filename) {
                           <div class="image-preview-wrapper">
-                            <img [src]="getImageUrl(product)" class="table-thumb" alt="">
+                            <img [src]="getImageUrl(product)" class="table-thumb" alt="" (error)="handleImageError($event)">
                             @if (product.image_size_formatted) {
                               <div class="file-size">{{ product.image_size_formatted }}</div>
                             }
@@ -408,6 +462,56 @@ import { CommonModule } from '@angular/common';
 
     .icon-btn-danger:hover { background: rgba(220, 38, 38, 0.1); color: var(--color-error); }
 
+    .filters-section {
+      margin-bottom: var(--space-4);
+    }
+
+    .category-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+      margin-bottom: var(--space-3);
+    }
+
+    .subcategory-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+      padding: var(--space-3);
+      background: var(--color-bg);
+      border-radius: var(--radius-md);
+      border: 1px solid var(--color-border);
+    }
+
+    .filter-btn {
+      padding: var(--space-2) var(--space-3);
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--color-text);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+
+    .filter-btn:hover {
+      background: var(--color-bg);
+      border-color: var(--color-primary);
+    }
+
+    .filter-btn.active {
+      background: var(--color-primary);
+      color: white;
+      border-color: var(--color-primary);
+    }
+
+    .filter-btn-sub {
+      font-size: 0.8125rem;
+      padding: var(--space-1) var(--space-3);
+    }
+
     .table-card {
       background: var(--color-surface);
       border: 1px solid var(--color-border);
@@ -424,10 +528,41 @@ import { CommonModule } from '@angular/common';
     .actions { display: flex; gap: var(--space-2); justify-content: flex-end; }
 
     .image-upload-row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
-    .image-preview-wrapper { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); }
-    .product-thumb { width: 60px; height: 60px; object-fit: cover; border-radius: var(--radius-md); border: 1px solid var(--color-border); }
-    .table-thumb { width: 48px; height: 48px; object-fit: cover; border-radius: var(--radius-sm); }
-    .no-image { width: 48px; height: 48px; background: var(--color-bg); border-radius: var(--radius-sm); border: 1px dashed var(--color-border); }
+    .image-preview-wrapper { 
+      display: flex; 
+      flex-direction: column; 
+      align-items: center; 
+      gap: var(--space-1);
+      position: relative;
+      min-width: 48px;
+      min-height: 48px;
+    }
+    .product-thumb { 
+      width: 60px; 
+      height: 60px; 
+      object-fit: cover; 
+      border-radius: var(--radius-md); 
+      border: 1px solid var(--color-border);
+      display: block;
+    }
+    .table-thumb { 
+      width: 48px; 
+      height: 48px; 
+      object-fit: cover; 
+      border-radius: var(--radius-sm);
+      display: block;
+      background: var(--color-bg);
+    }
+    .no-image { 
+      width: 48px; 
+      height: 48px; 
+      background: var(--color-bg); 
+      border-radius: var(--radius-sm); 
+      border: 1px dashed var(--color-border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
     .file-size { font-size: 0.6875rem; color: var(--color-text-muted); text-align: center; }
     .pending-file-name { font-size: 0.8125rem; color: var(--color-text-muted); font-style: italic; }
     .ingredients { color: var(--color-text-muted); font-size: 0.8125rem; display: block; margin-top: 2px; }
@@ -548,6 +683,7 @@ export class ProductsComponent implements OnInit {
   private router = inject(Router);
 
   products = signal<Product[]>([]);
+  filteredProducts = signal<Product[]>([]);
   loading = signal(true);
   saving = signal(false);
   deleting = signal<number | null>(null);
@@ -565,6 +701,11 @@ export class ProductsComponent implements OnInit {
   editingCategoryProductId = signal<number | null>(null);
   editingCategory: string = '';
   editingSubcategory: string = '';
+  // Filter state
+  selectedCategory = signal<string | null>(null);
+  selectedSubcategory = signal<string | null>(null);
+  availableCategories = signal<string[]>([]);
+  availableSubcategoriesForFilter = signal<string[]>([]);
 
   ngOnInit() {
     this.loadTenantSettings();
@@ -660,11 +801,14 @@ export class ProductsComponent implements OnInit {
 
     this.saving.set(true);
     this.api.updateProduct(product.id, { category, subcategory }).subscribe({
-      next: (updated) => {
-        this.products.update(list => list.map(p => p.id === updated.id ? updated : p));
-        this.cancelCategoryEdit();
-        this.saving.set(false);
-      },
+        next: (updated) => {
+          this.products.update(list => list.map(p => p.id === updated.id ? updated : p));
+          this.updateAvailableCategories();
+          this.updateAvailableSubcategories(this.selectedCategory());
+          this.applyFilters();
+          this.cancelCategoryEdit();
+          this.saving.set(false);
+        },
       error: (err) => {
         this.error.set(err.error?.detail || 'Failed to update category');
         this.cancelCategoryEdit();
@@ -693,13 +837,71 @@ export class ProductsComponent implements OnInit {
   loadProducts() {
     this.loading.set(true);
     this.api.getProducts().subscribe({
-      next: (products) => { this.products.set(products); this.loading.set(false); },
+      next: (products) => { 
+        this.products.set(products);
+        this.updateAvailableCategories();
+        this.applyFilters();
+        this.loading.set(false);
+      },
       error: (err) => {
         if (err.status === 401) { this.router.navigate(['/login']); }
         else { this.error.set(err.error?.detail || 'Failed to load products'); }
         this.loading.set(false);
       }
     });
+  }
+
+  updateAvailableCategories() {
+    const categories = new Set<string>();
+    this.products().forEach((product: Product) => {
+      if (product.category) {
+        categories.add(product.category);
+      }
+    });
+    this.availableCategories.set(Array.from(categories).sort());
+  }
+
+  selectCategory(category: string | null) {
+    this.selectedCategory.set(category);
+    this.selectedSubcategory.set(null);
+    this.updateAvailableSubcategories(category);
+    this.applyFilters();
+  }
+
+  selectSubcategory(subcategory: string | null) {
+    this.selectedSubcategory.set(subcategory);
+    this.applyFilters();
+  }
+
+  updateAvailableSubcategories(category: string | null) {
+    if (!category) {
+      this.availableSubcategoriesForFilter.set([]);
+      return;
+    }
+
+    const subcategories = new Set<string>();
+    this.products().forEach((product: Product) => {
+      if (product.category === category && product.subcategory) {
+        subcategories.add(product.subcategory);
+      }
+    });
+    this.availableSubcategoriesForFilter.set(Array.from(subcategories).sort());
+  }
+
+  applyFilters() {
+    let filtered = this.products();
+    
+    // Filter by category
+    if (this.selectedCategory()) {
+      filtered = filtered.filter(p => p.category === this.selectedCategory());
+    }
+    
+    // Filter by subcategory
+    if (this.selectedSubcategory()) {
+      filtered = filtered.filter(p => p.subcategory === this.selectedSubcategory());
+    }
+    
+    this.filteredProducts.set(filtered);
   }
 
   startEdit(product: Product) {
@@ -751,13 +953,21 @@ export class ProductsComponent implements OnInit {
     const editing = this.editingProduct();
     if (editing?.id) {
       this.api.updateProduct(editing.id, productData).subscribe({
-        next: (updated) => { this.products.update(list => list.map(p => p.id === updated.id ? updated : p)); this.cancelForm(); this.saving.set(false); },
+        next: (updated) => { 
+          this.products.update(list => list.map(p => p.id === updated.id ? updated : p));
+          this.updateAvailableCategories();
+          this.applyFilters();
+          this.cancelForm(); 
+          this.saving.set(false); 
+        },
         error: (err) => { this.error.set(err.error?.detail || 'Failed to update'); this.saving.set(false); }
       });
     } else {
       this.api.createProduct(productData as Product).subscribe({
         next: (product) => {
           this.products.update(list => [...list, product]);
+          this.updateAvailableCategories();
+          this.applyFilters();
           // Upload pending image if one was selected
           const pendingFile = this.pendingImageFile();
           if (pendingFile && product.id) {
@@ -793,13 +1003,35 @@ export class ProductsComponent implements OnInit {
     this.deleting.set(product.id);
     this.productToDelete.set(null);
     this.api.deleteProduct(product.id).subscribe({
-      next: () => { this.products.update(list => list.filter(p => p.id !== product.id)); this.deleting.set(null); },
+      next: () => { 
+        this.products.update(list => list.filter(p => p.id !== product.id));
+        this.updateAvailableCategories();
+        this.applyFilters();
+        this.deleting.set(null); 
+      },
       error: (err) => { this.error.set(err.error?.detail || 'Failed to delete'); this.deleting.set(null); }
     });
   }
 
   getImageUrl(product: Product): string | null {
     return this.api.getProductImageUrl(product);
+  }
+
+  handleImageError(event: Event) {
+    const img = event.target as HTMLImageElement;
+    img.style.display = 'none';
+    // Show placeholder if parent has no-image div
+    const wrapper = img.closest('.image-preview-wrapper');
+    if (wrapper) {
+      const placeholder = wrapper.querySelector('.no-image') as HTMLElement;
+      if (!placeholder) {
+        const noImageDiv = document.createElement('div');
+        noImageDiv.className = 'no-image';
+        wrapper.insertBefore(noImageDiv, img);
+      } else {
+        placeholder.style.display = 'block';
+      }
+    }
   }
 
   formatFileSize(bytes: number): string {
