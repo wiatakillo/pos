@@ -202,8 +202,8 @@ import {
                           </select>
                         </div>
                         <div class="item-cost">
-                          <label>Unit Cost</label>
-                          <input type="number" formControlName="unit_cost_cents" min="0" step="1" placeholder="cents" />
+                          <label>Unit Cost ($)</label>
+                          <input type="number" formControlName="unit_cost_dollars" min="0" step="0.01" placeholder="0.00" />
                         </div>
                         <div class="item-total">
                           <label>Total</label>
@@ -577,7 +577,7 @@ export class PurchaseOrdersComponent implements OnInit {
       inventory_item_id: ['', Validators.required],
       quantity_ordered: [1, [Validators.required, Validators.min(0.01)]],
       unit: ['piece', Validators.required],
-      unit_cost_cents: [0, [Validators.required, Validators.min(0)]],
+      unit_cost_dollars: [0, [Validators.required, Validators.min(0)]],
     });
     this.itemsArray.push(itemGroup);
   }
@@ -593,7 +593,7 @@ export class PurchaseOrdersComponent implements OnInit {
       if (invItem) {
         this.itemsArray.at(index).patchValue({
           unit: invItem.unit || 'piece',
-          unit_cost_cents: invItem.average_cost_cents || 0,
+          unit_cost_dollars: (invItem.average_cost_cents || 0) / 100,
         });
       }
     }
@@ -602,8 +602,8 @@ export class PurchaseOrdersComponent implements OnInit {
   getItemTotal(index: number): number {
     const itemCtrl = this.itemsArray.at(index);
     const qty = itemCtrl.get('quantity_ordered')?.value || 0;
-    const cost = itemCtrl.get('unit_cost_cents')?.value || 0;
-    return Math.round(qty * cost);
+    const costDollars = itemCtrl.get('unit_cost_dollars')?.value || 0;
+    return Math.round(qty * costDollars * 100); // Return in cents
   }
 
   submitCreateForm() {
@@ -619,7 +619,7 @@ export class PurchaseOrdersComponent implements OnInit {
         inventory_item_id: +item.inventory_item_id,
         quantity_ordered: +item.quantity_ordered,
         unit: item.unit as UnitOfMeasure,
-        unit_cost_cents: +item.unit_cost_cents,
+        unit_cost_cents: Math.round(+item.unit_cost_dollars * 100), // Convert dollars to cents
       })),
     };
 
