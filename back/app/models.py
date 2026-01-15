@@ -9,8 +9,10 @@ class OrderStatus(str, Enum):
     pending = "pending"
     preparing = "preparing"
     ready = "ready"
+    partially_delivered = "partially_delivered"  # Some items delivered, some not
     paid = "paid"
     completed = "completed"
+    cancelled = "cancelled"
 
 
 class BusinessType(str, Enum):
@@ -228,9 +230,28 @@ class Order(TenantMixin, table=True):
     table_id: int = Field(foreign_key="table.id")
     status: OrderStatus = Field(default=OrderStatus.pending)
     notes: str | None = None  # General order notes
+    session_id: str | None = Field(default=None, index=True)  # Unique session identifier per browser
+    customer_name: str | None = Field(default=None, index=True)  # Optional customer name for restaurant staff
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
+    
+    # Cancellation tracking
+    cancelled_at: datetime | None = None
+    cancelled_by: str | None = None  # 'customer' or 'staff'
+    
+    # Payment tracking
+    paid_at: datetime | None = None
+    paid_by_user_id: int | None = None  # Who marked it as paid (staff)
+    payment_method: str | None = None  # 'stripe', 'cash', 'terminal', etc.
+    
     items: list["OrderItem"] = Relationship(back_populates="order")
+
+
+class OrderItemStatus(str, Enum):
+    pending = "pending"
+    preparing = "preparing"
+    ready = "ready"
+    delivered = "delivered"
+    cancelled = "cancelled"
 
 
 class OrderItem(SQLModel, table=True):
@@ -241,7 +262,24 @@ class OrderItem(SQLModel, table=True):
     quantity: int
     price_cents: int  # Snapshot of price at order time
     notes: str | None = None  # Item-specific notes (e.g., "no onions")
-
+    
+    # Item-level status tracking
+    status: OrderItemStatus = Field(default=OrderItemStatus.pending, index=True)
+    status_updated_at: datetime | None = None
+    prepared_by_user_id: int | None = None  # Who marked it as ready
+    delivered_by_user_id: int | None = None  # Who delivered it
+    
+    # Soft delete fields (NEVER actually delete)
+    removed_by_customer: bool = Field(default=False, index=True)
+    removed_at: datetime | None = None
+    removed_reason: str | None = None
+    removed_by_user_id: int | None = None  # If removed by staff
+    
+    # Audit fields for modifications
+    modified_by_user_id: int | None = None  # Who modified this item (staff)
+    modified_at: datetime | None = None  # When was it modified
+    cancelled_reason: str | None = None  # Required when cancelling ready items (for tax authorities)
+    
     order: Order = Relationship(back_populates="items")
 
 
@@ -292,15 +330,44 @@ class OrderItemCreate(SQLModel):
     product_id: int
     quantity: int
     notes: str | None = None
+    source: str | None = None  # "tenant_product" or "product" to distinguish between TenantProduct and legacy Product
 
 
 class OrderCreate(SQLModel):
     items: list[OrderItemCreate]
     notes: str | None = None
+    session_id: str | None = None  # Session identifier for order isolation
+    customer_name: str | None = None  # Optional customer name
 
 
 class OrderStatusUpdate(SQLModel):
     status: OrderStatus
+
+
+class OrderItemStatusUpdate(SQLModel):
+    status: OrderItemStatus
+    user_id: int | None = None  # Optional: who made the change
+
+
+class OrderItemRemove(SQLModel):
+    reason: str | None = None  # Optional reason for removal
+
+
+class OrderItemUpdate(SQLModel):
+    quantity: int
+
+
+class OrderItemCancel(SQLModel):
+    reason: str  # Required reason when cancelling ready items (for tax authorities)
+
+
+class OrderMarkPaid(SQLModel):
+    payment_method: str = "cash"  # 'cash', 'terminal', 'stripe', etc.
+
+
+class OrderItemStaffUpdate(SQLModel):
+    quantity: int | None = None
+    notes: str | None = None
 
 
 class TenantUpdate(SQLModel):

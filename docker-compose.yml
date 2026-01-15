@@ -13,13 +13,19 @@ services:
       - DB_NAME=${POSTGRES_DB:-pos}
       - REDIS_URL=redis://redis:6379
       - SECRET_KEY=${SECRET_KEY:-CHANGE_THIS_IN_PRODUCTION}
-      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
-      - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY:-}
-      - STRIPE_CURRENCY=${STRIPE_CURRENCY:-eur}
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:4203}
+      - STRIPE_CURRENCY=${STRIPE_CURRENCY:-usd}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:4200}
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_USE_TLS=${SMTP_USE_TLS:-true}
+      - EMAIL_FROM=${EMAIL_FROM:-}
+      - EMAIL_FROM_NAME=${EMAIL_FROM_NAME:-POS2 System}
     volumes:
       - ./back:/app
       - ./back/uploads:/app/uploads
+      - ./config.env:/app/config.env:ro
     depends_on:
       db:
         condition: service_healthy
@@ -37,7 +43,6 @@ services:
       # Leave API_URL and WS_URL empty to use relative URLs (proxied through HAProxy)
       - API_URL=${API_URL:-}
       - WS_URL=${WS_URL:-}
-      - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY:-}
     volumes:
       - ./front:/app
       - /app/node_modules
@@ -84,9 +89,27 @@ services:
       - "8021"
     environment:
       REDIS_URL: redis://redis:6379
+      SECRET_KEY: ${SECRET_KEY:-CHANGE_THIS_IN_PRODUCTION}
+      ALGORITHM: ${ALGORITHM:-HS256}
+      API_URL: http://pos-back:8020
     depends_on:
       redis:
         condition: service_healthy
+      back:
+        condition: service_started
+
+  haproxy:
+    image: haproxy:2.8-alpine
+    container_name: pos-haproxy
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-4202}:4202"
+    volumes:
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    depends_on:
+      - front
+      - back
+      - ws-bridge
 
   haproxy:
     image: haproxy:2.8-alpine

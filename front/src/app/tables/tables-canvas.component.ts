@@ -105,12 +105,36 @@ interface TableShape {
 
         <!-- Main Canvas -->
         <div class="canvas-wrapper">
+          <!-- Zoom Controls -->
+          <div class="zoom-controls">
+            <button class="zoom-btn" (click)="zoomIn()" title="Zoom In">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                <line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/>
+              </svg>
+            </button>
+            <span class="zoom-level">{{ Math.round(zoomLevel * 100) }}%</span>
+            <button class="zoom-btn" (click)="zoomOut()" title="Zoom Out">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                <line x1="8" y1="11" x2="14" y2="11"/>
+              </svg>
+            </button>
+            <button class="zoom-btn" (click)="resetZoom()" title="Reset Zoom">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                <path d="M3 3v5h5"/>
+              </svg>
+            </button>
+          </div>
           <div
             class="canvas-area"
             #canvasArea
+            (mousedown)="onCanvasMouseDown($event)"
             (dragover)="onCanvasDragOver($event)"
             (drop)="onCanvasDrop($event)"
             (click)="onCanvasClick($event)"
+            (wheel)="onCanvasWheel($event)"
           >
             @if (floors().length === 0) {
               <div class="empty-state">
@@ -132,8 +156,9 @@ interface TableShape {
               <svg
                 class="canvas-svg"
                 #canvasSvg
-                [attr.viewBox]="'0 0 ' + canvasWidth + ' ' + canvasHeight"
-                preserveAspectRatio="xMinYMin meet"
+                [attr.viewBox]="getViewBox()"
+                preserveAspectRatio="xMidYMid meet"
+                (touchstart)="onCanvasTouchStart($event)"
               >
                 <!-- Professional SVG Definitions -->
                 <defs>
@@ -178,8 +203,10 @@ interface TableShape {
                   <g
                     class="table-group"
                     [class.selected]="selectedTable()?.id === table.id"
+                    [class.dragging]="isDragging && draggedTable?.id === table.id"
                     [attr.transform]="'translate(' + (table.x_position || 100) + ',' + (table.y_position || 100) + ')'"
                     (mousedown)="onTableMouseDown($event, table)"
+                    (touchstart)="onTableTouchStart($event, table)"
                   >
                     <!-- Chairs around table (rendered first, behind table) -->
                     @for (seat of getSeatPositions(table); track $index) {
@@ -309,30 +336,36 @@ interface TableShape {
             }
           </div>
 
-          <!-- Properties Panel (shown when table selected) -->
+          <!-- Properties Panel (shown when table selected) - Bottom sheet on mobile -->
           @if (selectedTable()) {
-            <div class="properties-panel">
+            <div class="properties-panel-backdrop" (click)="selectedTable.set(null)"></div>
+            <div class="properties-panel" [class.expanded]="propertiesPanelExpanded">
+              <!-- Drag handle for mobile -->
+              <div class="panel-drag-handle" (click)="propertiesPanelExpanded = !propertiesPanelExpanded">
+                <span class="drag-indicator"></span>
+              </div>
               <div class="panel-header">
-                <h3>{{ selectedTable()?.name }}</h3>
+                <div class="panel-title-row">
+                  <h3>{{ selectedTable()?.name }}</h3>
+                  <div class="status-badge" [class.occupied]="selectedTable()?.status === 'occupied'">
+                    {{ selectedTable()?.status === 'occupied' ? 'Occupied' : 'Available' }}
+                  </div>
+                </div>
                 <button class="close-btn" (click)="selectedTable.set(null)">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M18 6L6 18M6 6l12 12"/>
                   </svg>
                 </button>
               </div>
               <div class="panel-body">
-                <div class="form-group">
-                  <label>Table Name</label>
-                  <input type="text" [(ngModel)]="selectedTableName" (blur)="updateSelectedTable()">
-                </div>
-                <div class="form-group">
-                  <label>Number of Seats</label>
-                  <input type="number" min="1" max="20" [(ngModel)]="selectedTableSeats" (blur)="updateSelectedTable()">
-                </div>
-                <div class="form-group">
-                  <label>Status</label>
-                  <div class="status-display" [class.occupied]="selectedTable()?.status === 'occupied'">
-                    {{ selectedTable()?.status === 'occupied' ? 'Occupied' : 'Available' }}
+                <div class="form-row">
+                  <div class="form-group">
+                    <label>Name</label>
+                    <input type="text" [(ngModel)]="selectedTableName" (blur)="updateSelectedTable()">
+                  </div>
+                  <div class="form-group">
+                    <label>Seats</label>
+                    <input type="number" min="1" max="20" [(ngModel)]="selectedTableSeats" (blur)="updateSelectedTable()">
                   </div>
                 </div>
                 <button class="delete-btn" (click)="deleteSelectedTable()">
@@ -340,7 +373,7 @@ interface TableShape {
                     <polyline points="3,6 5,6 21,6"/>
                     <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
                   </svg>
-                  Delete Table
+                  Delete
                 </button>
               </div>
             </div>
@@ -565,6 +598,56 @@ interface TableShape {
       background-size: 48px 48px, 48px 48px, auto;
       overflow: hidden;
       position: relative;
+      touch-action: none; /* Prevent browser handling of touch gestures */
+      cursor: grab;
+    }
+    .canvas-area:active {
+      cursor: grabbing;
+    }
+
+    /* Zoom Controls */
+    .zoom-controls {
+      position: absolute;
+      bottom: var(--space-4);
+      right: var(--space-4);
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      background: var(--color-surface);
+      padding: var(--space-2);
+      border-radius: var(--radius-md);
+      border: 1px solid var(--color-border);
+      box-shadow: var(--shadow-md);
+      z-index: 50;
+    }
+
+    .zoom-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border: none;
+      background: transparent;
+      color: var(--color-text-muted);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .zoom-btn:hover {
+      background: var(--color-bg);
+      color: var(--color-text);
+    }
+    .zoom-btn:active {
+      transform: scale(0.95);
+    }
+
+    .zoom-level {
+      min-width: 50px;
+      text-align: center;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      color: var(--color-text-muted);
     }
 
     .empty-state {
@@ -616,121 +699,167 @@ interface TableShape {
       pointer-events: none;
     }
 
-    /* Properties Panel */
+    /* Touch/drag state for mobile */
+    .table-group.dragging {
+      cursor: grabbing;
+      filter: brightness(1.1) drop-shadow(0 0 12px rgba(34, 197, 94, 0.8));
+    }
+
+    /* Properties Panel - Mobile-first (Bottom Sheet) */
+    .properties-panel-backdrop {
+      display: none;
+    }
+
     .properties-panel {
-      position: absolute;
-      top: 1rem;
-      right: 1rem;
-      width: 280px;
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
       background: var(--color-surface);
-      border-radius: var(--radius-lg);
+      border-radius: var(--radius-lg) var(--radius-lg) 0 0;
       border: 1px solid var(--color-border);
-      box-shadow: 0 4px 16px rgba(0,0,0,0.1);
-      overflow: hidden;
+      border-bottom: none;
+      box-shadow: 0 -4px 24px rgba(0,0,0,0.15);
+      z-index: 100;
+      transform: translateY(0);
+      transition: transform 0.3s ease;
+      max-height: 50vh;
+      overflow-y: auto;
+    }
+
+    .panel-drag-handle {
+      display: flex;
+      justify-content: center;
+      padding: var(--space-2) 0;
+      cursor: pointer;
+    }
+
+    .drag-indicator {
+      width: 40px;
+      height: 4px;
+      background: var(--color-border);
+      border-radius: 2px;
     }
 
     .panel-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: var(--space-4);
-      border-bottom: 1px solid var(--color-border);
+      padding: 0 var(--space-4) var(--space-3);
     }
+
+    .panel-title-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+    }
+
     .panel-header h3 {
       margin: 0;
-      font-size: 1rem;
+      font-size: 1.125rem;
       font-weight: 600;
       color: var(--color-text);
     }
 
+    .status-badge {
+      padding: var(--space-1) var(--space-2);
+      border-radius: var(--radius-sm);
+      font-size: 0.75rem;
+      font-weight: 600;
+      background: #e8dcc8;
+      color: #5a4a3a;
+    }
+    .status-badge.occupied {
+      background: var(--color-success-light);
+      color: var(--color-success);
+    }
+
     .close-btn {
-      padding: 0.25rem;
+      padding: var(--space-2);
       background: transparent;
       border: none;
-      color: inherit;
+      color: var(--color-text-muted);
       cursor: pointer;
-      opacity: 0.8;
-      transition: opacity 0.15s;
+      border-radius: var(--radius-sm);
+      transition: all 0.15s;
     }
-    .close-btn:hover { opacity: 1; }
+    .close-btn:hover {
+      background: var(--color-bg);
+      color: var(--color-text);
+    }
 
     .panel-body {
-      padding: 1.25rem;
+      padding: 0 var(--space-4) var(--space-4);
       display: flex;
       flex-direction: column;
-      gap: 1rem;
+      gap: var(--space-3);
+    }
+
+    .form-row {
+      display: flex;
+      gap: var(--space-3);
     }
 
     .form-group {
+      flex: 1;
       display: flex;
       flex-direction: column;
       gap: var(--space-1);
     }
     .form-group label {
-      font-size: 0.75rem;
+      font-size: 0.6875rem;
       font-weight: 600;
       color: var(--color-text-muted);
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }
     .form-group input {
-      padding: var(--space-3);
+      padding: var(--space-2) var(--space-3);
       border: 1px solid var(--color-border);
       border-radius: var(--radius-md);
       font-size: 0.9375rem;
+      background: var(--color-bg);
     }
     .form-group input:focus {
       outline: none;
       border-color: var(--color-primary);
-      box-shadow: 0 0 0 3px rgba(var(--color-primary-rgb), 0.1);
+      box-shadow: 0 0 0 2px var(--color-primary-light);
     }
-
-    .status-display {
-      padding: 0.625rem 0.75rem;
-      background: #22c55e;
-      color: white;
-      border-radius: 6px;
-      font-weight: 500;
-      text-align: center;
-    }
-    .status-display.occupied { background: #22c55e; }
-    .status-display:not(.occupied) { background: #e8dcc8; color: #5a4a3a; }
 
     .delete-btn {
       display: flex;
       align-items: center;
       justify-content: center;
       gap: var(--space-2);
-      width: 100%;
-      padding: var(--space-3);
+      padding: var(--space-2) var(--space-3);
       background: rgba(220, 38, 38, 0.1);
       color: var(--color-error);
       border: none;
       border-radius: var(--radius-md);
-      font-size: 0.875rem;
+      font-size: 0.8125rem;
       font-weight: 500;
       cursor: pointer;
       transition: all 0.15s ease;
     }
     .delete-btn:hover { background: rgba(220, 38, 38, 0.15); }
 
-    /* Modal */
+    /* Modal - Mobile-first */
     .modal-overlay {
       position: fixed;
       inset: 0;
       background: rgba(0,0,0,0.5);
       display: flex;
-      align-items: center;
+      align-items: flex-end;
       justify-content: center;
       z-index: 1000;
+      padding: 0;
     }
 
     .modal-content {
       background: var(--color-surface);
-      border-radius: var(--radius-lg);
-      width: 90%;
-      max-width: 480px;
-      max-height: 90vh;
+      border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+      width: 100%;
+      max-height: 85vh;
       overflow-y: auto;
     }
 
@@ -738,8 +867,12 @@ interface TableShape {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: var(--space-5) var(--space-6);
+      padding: var(--space-4);
       border-bottom: 1px solid var(--color-border);
+      position: sticky;
+      top: 0;
+      background: var(--color-surface);
+      z-index: 1;
     }
     .modal-header h3 {
       margin: 0;
@@ -749,22 +882,27 @@ interface TableShape {
     }
 
     .modal-body {
-      padding: var(--space-6);
+      padding: var(--space-4);
     }
 
     .modal-footer {
       display: flex;
       gap: var(--space-3);
-      justify-content: flex-end;
-      padding: var(--space-5) var(--space-6);
+      padding: var(--space-4);
       border-top: 1px solid var(--color-border);
       background: var(--color-bg);
+      position: sticky;
+      bottom: 0;
+    }
+    .modal-footer .btn {
+      flex: 1;
     }
 
+    /* Shape Grid - 2 columns on mobile */
     .shape-grid {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 0.75rem;
+      grid-template-columns: repeat(2, 1fr);
+      gap: var(--space-3);
     }
 
     .shape-option {
@@ -772,49 +910,51 @@ interface TableShape {
       flex-direction: column;
       align-items: center;
       gap: var(--space-2);
-      padding: var(--space-5) var(--space-3);
+      padding: var(--space-4) var(--space-3);
       border: 2px solid var(--color-border);
       border-radius: var(--radius-md);
       cursor: pointer;
       transition: all 0.15s ease;
+      min-height: 88px;
     }
     .shape-option:hover { border-color: var(--color-text-muted); background: var(--color-bg); }
+    .shape-option:active { transform: scale(0.98); }
     .shape-option.selected { border-color: var(--color-primary); background: var(--color-primary-light); }
-    .shape-option span { font-weight: 500; color: var(--color-text); }
+    .shape-option span { font-weight: 500; color: var(--color-text); font-size: 0.875rem; }
     .shape-option small { color: var(--color-text-muted); font-size: 0.75rem; }
 
     .shape-preview {
-      width: 48px;
-      height: 48px;
+      width: 44px;
+      height: 44px;
       display: flex;
       align-items: center;
       justify-content: center;
     }
 
     .preview-rect {
-      width: 44px;
-      height: 28px;
+      width: 40px;
+      height: 26px;
       background: #e8dcc8;
       border: 2px solid #d4c4a8;
       border-radius: 4px;
     }
     .preview-circle {
-      width: 36px;
-      height: 36px;
+      width: 32px;
+      height: 32px;
       background: #e8dcc8;
       border: 2px solid #d4c4a8;
       border-radius: 50%;
     }
     .preview-oval {
-      width: 44px;
-      height: 28px;
+      width: 40px;
+      height: 26px;
       background: #e8dcc8;
       border: 2px solid #d4c4a8;
       border-radius: 50%;
     }
     .preview-booth {
-      width: 40px;
-      height: 32px;
+      width: 36px;
+      height: 28px;
       background: #e8dcc8;
       border: 2px solid #d4c4a8;
       border-radius: 4px;
@@ -824,17 +964,17 @@ interface TableShape {
     .preview-booth::after {
       content: '';
       position: absolute;
-      left: 4px;
-      right: 4px;
-      height: 3px;
+      left: 3px;
+      right: 3px;
+      height: 2px;
       background: #c9b896;
-      border-radius: 2px;
+      border-radius: 1px;
     }
-    .preview-booth::before { top: 4px; }
-    .preview-booth::after { bottom: 4px; }
+    .preview-booth::before { top: 3px; }
+    .preview-booth::after { bottom: 3px; }
     .preview-bar {
-      width: 48px;
-      height: 20px;
+      width: 44px;
+      height: 18px;
       background: #5c4033;
       border: 2px solid #3d2817;
       border-radius: 4px;
@@ -843,12 +983,127 @@ interface TableShape {
     .preview-bar::before {
       content: '';
       position: absolute;
-      top: 3px;
-      left: 4px;
-      right: 4px;
+      top: 2px;
+      left: 3px;
+      right: 3px;
       height: 2px;
       background: #8b6914;
       border-radius: 1px;
+    }
+
+    /* ========== DESKTOP STYLES (min-width: 768px) ========== */
+    @media (min-width: 768px) {
+      .page-header {
+        flex-direction: row;
+      }
+
+      .header-actions {
+        flex-direction: row;
+      }
+
+      .floor-tabs {
+        padding: var(--space-2);
+      }
+
+      .floor-tab {
+        padding: var(--space-2) var(--space-4);
+      }
+
+      /* Properties Panel - Desktop: Right sidebar */
+      .properties-panel-backdrop {
+        display: none;
+      }
+
+      .properties-panel {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        bottom: auto;
+        left: auto;
+        width: 280px;
+        max-height: none;
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--color-border);
+        box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+        z-index: 10;
+      }
+
+      .panel-drag-handle {
+        display: none;
+      }
+
+      .panel-header {
+        padding: var(--space-4);
+        border-bottom: 1px solid var(--color-border);
+      }
+
+      .panel-body {
+        padding: var(--space-4);
+        gap: var(--space-3);
+      }
+
+      .form-row {
+        flex-direction: column;
+        gap: var(--space-3);
+      }
+
+      .delete-btn {
+        padding: var(--space-3);
+        font-size: 0.875rem;
+      }
+
+      /* Modal - Desktop: Centered */
+      .modal-overlay {
+        align-items: center;
+        padding: var(--space-4);
+      }
+
+      .modal-content {
+        border-radius: var(--radius-lg);
+        width: 90%;
+        max-width: 520px;
+        max-height: 85vh;
+      }
+
+      .modal-header {
+        padding: var(--space-5) var(--space-6);
+      }
+
+      .modal-body {
+        padding: var(--space-5) var(--space-6);
+      }
+
+      .modal-footer {
+        padding: var(--space-5) var(--space-6);
+      }
+      .modal-footer .btn {
+        flex: none;
+      }
+
+      /* Shape Grid - 4 columns on desktop */
+      .shape-grid {
+        grid-template-columns: repeat(4, 1fr);
+        gap: 0.75rem;
+      }
+
+      .shape-option {
+        padding: var(--space-5) var(--space-3);
+      }
+
+      .shape-preview {
+        width: 48px;
+        height: 48px;
+      }
+
+      .preview-rect { width: 44px; height: 28px; }
+      .preview-circle { width: 36px; height: 36px; }
+      .preview-oval { width: 44px; height: 28px; }
+      .preview-booth { width: 40px; height: 32px; }
+      .preview-booth::before, .preview-booth::after { height: 3px; left: 4px; right: 4px; }
+      .preview-booth::before { top: 4px; }
+      .preview-booth::after { bottom: 4px; }
+      .preview-bar { width: 48px; height: 20px; }
+      .preview-bar::before { top: 3px; left: 4px; right: 4px; }
     }
   `]
 })
@@ -875,9 +1130,21 @@ export class TablesCanvasComponent implements OnInit, OnDestroy {
   canvasWidth = 1200;
   canvasHeight = 800;
 
-  private isDragging = false;
-  private draggedTable: CanvasTable | null = null;
+  // Mobile UI state
+  propertiesPanelExpanded = false;
+  isDragging = false;
+  draggedTable: CanvasTable | null = null;
   private dragOffset = { x: 0, y: 0 };
+
+  // Zoom and pan state
+  zoomLevel = 1;
+  private panOffset = { x: 0, y: 0 };
+  private minZoom = 0.25;
+  private maxZoom = 3;
+  private lastPinchDistance = 0;
+  private isPanning = false;
+  private lastPanPosition = { x: 0, y: 0 };
+  Math = Math; // Expose Math for template
 
   tableShapes: TableShape[] = [
     { id: 'square4', name: 'Square 4', shape: 'rectangle', width: 80, height: 80, seats: 4 },
@@ -892,13 +1159,21 @@ export class TablesCanvasComponent implements OnInit, OnDestroy {
 
   ngOnInit() {
     this.loadData();
+    // Mouse event listeners
     document.addEventListener('mousemove', this.onMouseMove);
     document.addEventListener('mouseup', this.onMouseUp);
+    // Touch event listeners for mobile
+    document.addEventListener('touchmove', this.onTouchMove, { passive: false });
+    document.addEventListener('touchend', this.onTouchEnd);
+    document.addEventListener('touchcancel', this.onTouchEnd);
   }
 
   ngOnDestroy() {
     document.removeEventListener('mousemove', this.onMouseMove);
     document.removeEventListener('mouseup', this.onMouseUp);
+    document.removeEventListener('touchmove', this.onTouchMove);
+    document.removeEventListener('touchend', this.onTouchEnd);
+    document.removeEventListener('touchcancel', this.onTouchEnd);
   }
 
   loadData() {
@@ -995,6 +1270,71 @@ export class TablesCanvasComponent implements OnInit, OnDestroy {
     return match ? match[0] : table.name;
   }
 
+  // Zoom and pan methods
+  getViewBox(): string {
+    const viewWidth = this.canvasWidth / this.zoomLevel;
+    const viewHeight = this.canvasHeight / this.zoomLevel;
+    // Center the viewport
+    const x = (this.canvasWidth - viewWidth) / 2 + this.panOffset.x;
+    const y = (this.canvasHeight - viewHeight) / 2 + this.panOffset.y;
+    return `${x} ${y} ${viewWidth} ${viewHeight}`;
+  }
+
+  zoomIn() {
+    this.setZoom(this.zoomLevel * 1.25);
+  }
+
+  zoomOut() {
+    this.setZoom(this.zoomLevel / 1.25);
+  }
+
+  resetZoom() {
+    this.zoomLevel = 1;
+    this.panOffset = { x: 0, y: 0 };
+  }
+
+  private setZoom(level: number) {
+    this.zoomLevel = Math.max(this.minZoom, Math.min(this.maxZoom, level));
+  }
+
+  onCanvasWheel(event: WheelEvent) {
+    // Prevent page zoom, only zoom canvas
+    event.preventDefault();
+
+    const zoomFactor = event.deltaY > 0 ? 0.9 : 1.1;
+    this.setZoom(this.zoomLevel * zoomFactor);
+  }
+
+  // Pinch-to-zoom for touch devices
+  onCanvasTouchStart(event: TouchEvent) {
+    if (event.touches.length === 2) {
+      // Two-finger pinch start
+      event.preventDefault();
+      const touch1 = event.touches[0];
+      const touch2 = event.touches[1];
+      this.lastPinchDistance = Math.hypot(
+        touch2.clientX - touch1.clientX,
+        touch2.clientY - touch1.clientY
+      );
+    }
+  }
+
+  private onPinchMove = (event: TouchEvent) => {
+    if (event.touches.length !== 2 || this.lastPinchDistance === 0) return;
+
+    event.preventDefault();
+    const touch1 = event.touches[0];
+    const touch2 = event.touches[1];
+    const currentDistance = Math.hypot(
+      touch2.clientX - touch1.clientX,
+      touch2.clientY - touch1.clientY
+    );
+
+    const scale = currentDistance / this.lastPinchDistance;
+    this.setZoom(this.zoomLevel * scale);
+    this.lastPinchDistance = currentDistance;
+  };
+
   // Drag handlers
   onCanvasDragOver(event: DragEvent) {
     event.preventDefault();
@@ -1053,7 +1393,31 @@ export class TablesCanvasComponent implements OnInit, OnDestroy {
     document.body.style.cursor = 'grabbing';
 
     // Get SVG coordinates using native transformation
-    const svgPoint = this.getSvgPoint(event);
+    const svgPoint = this.getSvgPoint(event.clientX, event.clientY);
+    if (svgPoint) {
+      this.dragOffset = {
+        x: svgPoint.x - (table.x_position || 0),
+        y: svgPoint.y - (table.y_position || 0)
+      };
+    }
+  }
+
+  // Touch start handler for mobile
+  onTableTouchStart(event: TouchEvent, table: CanvasTable) {
+    if (event.touches.length !== 1) return; // Only single touch
+
+    const touch = event.touches[0];
+    event.preventDefault(); // Prevent scrolling while dragging
+
+    this.selectedTable.set(table);
+    this.selectedTableName = table.name;
+    this.selectedTableSeats = table.seat_count || 4;
+    this.propertiesPanelExpanded = false; // Start collapsed on mobile
+
+    this.isDragging = true;
+    this.draggedTable = table;
+
+    const svgPoint = this.getSvgPoint(touch.clientX, touch.clientY);
     if (svgPoint) {
       this.dragOffset = {
         x: svgPoint.x - (table.x_position || 0),
@@ -1063,13 +1427,13 @@ export class TablesCanvasComponent implements OnInit, OnDestroy {
   }
 
   // Convert screen coordinates to SVG viewBox coordinates
-  private getSvgPoint(event: MouseEvent): { x: number; y: number } | null {
+  private getSvgPoint(clientX: number, clientY: number): { x: number; y: number } | null {
     if (!this.canvasSvgRef?.nativeElement) return null;
 
     const svg = this.canvasSvgRef.nativeElement;
     const point = svg.createSVGPoint();
-    point.x = event.clientX;
-    point.y = event.clientY;
+    point.x = clientX;
+    point.y = clientY;
 
     // Get the inverse of the screen CTM to convert screen coords to SVG coords
     const ctm = svg.getScreenCTM();
@@ -1079,10 +1443,37 @@ export class TablesCanvasComponent implements OnInit, OnDestroy {
     return { x: svgPoint.x, y: svgPoint.y };
   }
 
+  // Canvas mousedown - start panning if not clicking on a table
+  onCanvasMouseDown(event: MouseEvent) {
+    // Only pan with left mouse button and when not clicking on a table
+    if (event.button !== 0) return;
+    const target = event.target as HTMLElement;
+    if (target.closest('.table-group')) return;
+
+    // Start panning
+    this.isPanning = true;
+    this.lastPanPosition = { x: event.clientX, y: event.clientY };
+    document.body.style.cursor = 'grabbing';
+    event.preventDefault();
+  }
+
   onMouseMove = (event: MouseEvent) => {
+    // Handle canvas panning
+    if (this.isPanning) {
+      const dx = (event.clientX - this.lastPanPosition.x) / this.zoomLevel;
+      const dy = (event.clientY - this.lastPanPosition.y) / this.zoomLevel;
+
+      this.panOffset.x -= dx;
+      this.panOffset.y -= dy;
+
+      this.lastPanPosition = { x: event.clientX, y: event.clientY };
+      return;
+    }
+
+    // Handle table dragging
     if (!this.isDragging || !this.draggedTable) return;
 
-    const svgPoint = this.getSvgPoint(event);
+    const svgPoint = this.getSvgPoint(event.clientX, event.clientY);
     if (!svgPoint) return;
 
     const x = svgPoint.x - this.dragOffset.x;
@@ -1104,12 +1495,72 @@ export class TablesCanvasComponent implements OnInit, OnDestroy {
   };
 
   onMouseUp = () => {
+    // Stop panning
+    if (this.isPanning) {
+      this.isPanning = false;
+      document.body.style.cursor = '';
+    }
+
+    // Stop table dragging
     if (this.isDragging) {
       document.body.style.userSelect = '';
       document.body.style.cursor = '';
     }
     this.isDragging = false;
     this.draggedTable = null;
+  };
+
+  // Touch move handler for mobile dragging and pinch-to-zoom
+  onTouchMove = (event: TouchEvent) => {
+    // Handle pinch-to-zoom with 2 fingers
+    if (event.touches.length === 2 && this.lastPinchDistance > 0) {
+      event.preventDefault();
+      const touch1 = event.touches[0];
+      const touch2 = event.touches[1];
+      const currentDistance = Math.hypot(
+        touch2.clientX - touch1.clientX,
+        touch2.clientY - touch1.clientY
+      );
+
+      const scale = currentDistance / this.lastPinchDistance;
+      this.setZoom(this.zoomLevel * scale);
+      this.lastPinchDistance = currentDistance;
+      return;
+    }
+
+    // Handle single-finger table drag
+    if (!this.isDragging || !this.draggedTable) return;
+    if (event.touches.length !== 1) return;
+
+    event.preventDefault(); // Prevent scrolling while dragging
+
+    const touch = event.touches[0];
+    const svgPoint = this.getSvgPoint(touch.clientX, touch.clientY);
+    if (!svgPoint) return;
+
+    const x = svgPoint.x - this.dragOffset.x;
+    const y = svgPoint.y - this.dragOffset.y;
+
+    // Clamp to canvas bounds
+    const clampedX = Math.max(50, Math.min(this.canvasWidth - 50, x));
+    const clampedY = Math.max(50, Math.min(this.canvasHeight - 50, y));
+
+    this.tables.update(tables =>
+      tables.map(t =>
+        t.id === this.draggedTable?.id
+          ? { ...t, x_position: clampedX, y_position: clampedY }
+          : t
+      )
+    );
+
+    this.hasUnsavedChanges.set(true);
+  };
+
+  // Touch end handler for mobile
+  onTouchEnd = () => {
+    this.isDragging = false;
+    this.draggedTable = null;
+    this.lastPinchDistance = 0; // Reset pinch tracking
   };
 
   onCanvasClick(event: MouseEvent) {

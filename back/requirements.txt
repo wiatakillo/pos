@@ -27,5 +27,8 @@ Pillow>=12.1.0
 # HTTP requests for wine import
 requests>=2.32.5
 
+# Email sending
+aiosmtplib>=3.0.0
+
 # PDF generation
 reportlab>=4.4.7

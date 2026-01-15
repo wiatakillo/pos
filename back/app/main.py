@@ -1,7 +1,7 @@
 import json
 import logging
 import os
-from datetime import timedelta
+from datetime import timedelta, datetime, timezone
 from io import BytesIO
 from pathlib import Path
 from typing import Annotated, Dict
@@ -307,12 +307,22 @@ def get_redis() -> redis.Redis | None:
     return redis_client
 
 
-def publish_order_update(tenant_id: int, order_data: dict) -> None:
-    """Publish order update to Redis for WebSocket bridge."""
+def publish_order_update(tenant_id: int, order_data: dict, table_id: int | None = None) -> None:
+    """Publish order update to Redis for WebSocket bridge.
+    
+    Publishes to both:
+    - orders:tenant:{tenant_id} - for restaurant owners (all tenant orders)
+    - orders:table:{table_id} - for customers (table-specific orders, if table_id provided)
+    """
     r = get_redis()
     if r:
         try:
-            r.publish(f"orders:{tenant_id}", json.dumps(order_data))
+            # Always publish to tenant channel for restaurant owners
+            r.publish(f"orders:tenant:{tenant_id}", json.dumps(order_data))
+            
+            # Also publish to table channel if table_id is provided (for customers)
+            if table_id is not None:
+                r.publish(f"orders:table:{table_id}", json.dumps(order_data))
         except Exception:
             pass  # Fail silently if Redis unavailable
 
@@ -806,9 +816,102 @@ def list_products(
     current_user: Annotated[models.User, Depends(security.get_current_user)],
     session: Session = Depends(get_session),
 ) -> list[models.Product]:
-    return session.exec(
+    """List all products for the tenant.
+    
+    Returns all Product entries. Also:
+    1. Creates Product entries for TenantProducts that don't have a linked Product entry
+    2. Updates existing Product entries that are missing images but have a linked TenantProduct with provider_product
+    """
+    # Get all Product entries
+    products = session.exec(
         select(models.Product).where(models.Product.tenant_id == current_user.tenant_id)
     ).all()
+    
+    # Get TenantProducts that don't have a linked Product entry
+    tenant_products_without_product = session.exec(
+        select(models.TenantProduct).where(
+            models.TenantProduct.tenant_id == current_user.tenant_id,
+            models.TenantProduct.product_id.is_(None)
+        )
+    ).all()
+    
+    # Create Product entries for TenantProducts that don't have one
+    for tp in tenant_products_without_product:
+        # Get catalog item for category/subcategory
+        catalog_item = session.exec(
+            select(models.ProductCatalog).where(models.ProductCatalog.id == tp.catalog_id)
+        ).first()
+        
+        # Get image from TenantProduct or provider product
+        image_filename = tp.image_filename
+        if not image_filename and tp.provider_product_id:
+            # Try to get image from provider product
+            provider_product = session.exec(
+                select(models.ProviderProduct).where(models.ProviderProduct.id == tp.provider_product_id)
+            ).first()
+            if provider_product and provider_product.image_filename:
+                provider = session.exec(
+                    select(models.Provider).where(models.Provider.id == provider_product.provider_id)
+                ).first()
+                if provider:
+                    image_filename = f"providers/{provider.token}/products/{provider_product.image_filename}"
+        
+        # Create Product entry
+        product = models.Product(
+            tenant_id=tp.tenant_id,
+            name=tp.name,
+            price_cents=tp.price_cents,
+            image_filename=image_filename,
+            ingredients=tp.ingredients,
+            category=catalog_item.category if catalog_item else None,
+            subcategory=catalog_item.subcategory if catalog_item else None,
+        )
+        session.add(product)
+        session.flush()  # Flush to get the ID
+        session.refresh(product)
+        
+        # Link TenantProduct to the new Product
+        tp.product_id = product.id
+        session.add(tp)
+        
+        products.append(product)
+    
+    # Update existing Product entries that are missing images
+    updated_count = 0
+    for product in products:
+        if not product.image_filename:
+            # Find linked TenantProduct
+            tenant_product = session.exec(
+                select(models.TenantProduct).where(
+                    models.TenantProduct.product_id == product.id,
+                    models.TenantProduct.tenant_id == current_user.tenant_id
+                )
+            ).first()
+            
+            if tenant_product and tenant_product.provider_product_id:
+                # Get image from provider product
+                provider_product = session.exec(
+                    select(models.ProviderProduct).where(
+                        models.ProviderProduct.id == tenant_product.provider_product_id
+                    )
+                ).first()
+                if provider_product and provider_product.image_filename:
+                    provider = session.exec(
+                        select(models.Provider).where(models.Provider.id == provider_product.provider_id)
+                    ).first()
+                    if provider:
+                        product.image_filename = f"providers/{provider.token}/products/{provider_product.image_filename}"
+                        session.add(product)
+                        updated_count += 1
+    
+    # Commit all changes
+    if tenant_products_without_product or updated_count > 0:
+        session.commit()
+        # Refresh products to get updated image_filename
+        for product in products:
+            session.refresh(product)
+    
+    return products
 
 
 @app.post("/products")
@@ -1812,6 +1915,26 @@ def delete_table(
     return {"status": "deleted", "id": table_id}
 
 
+# ============ INTERNAL VALIDATION (for ws-bridge) ============
+
+@app.get("/internal/validate-table/{table_token}")
+def validate_table_token(
+    table_token: str,
+    session: Session = Depends(get_session)
+) -> dict:
+    """Internal endpoint for ws-bridge to validate table tokens."""
+    table = session.exec(select(models.Table).where(models.Table.token == table_token)).first()
+    
+    if not table:
+        raise HTTPException(status_code=404, detail="Table not found")
+    
+    return {
+        "table_id": table.id,
+        "tenant_id": table.tenant_id,
+        "valid": True
+    }
+
+
 # ============ PUBLIC MENU ============
 
 
@@ -1913,6 +2036,7 @@ def get_menu(
             "image_filename": image_filename,
             "tenant_id": tp.tenant_id,
             "ingredients": tp.ingredients,
+            "_source": "tenant_product",  # Indicate this is from TenantProduct table
         }
 
         # Add translations for tenant product
@@ -2125,6 +2249,7 @@ def get_menu(
             "image_filename": p.image_filename,
             "tenant_id": p.tenant_id,
             "ingredients": p.ingredients,
+            "_source": "product",  # Indicate this is from legacy Product table
         }
 
         # Add translations for legacy product
@@ -2221,7 +2346,9 @@ def get_menu(
 
 @app.get("/menu/{table_token}/order")
 def get_current_order(
-    table_token: str, session: Session = Depends(get_session)
+    table_token: str,
+    session_id: str | None = Query(None, description="Session identifier for order isolation"),
+    session: Session = Depends(get_session)
 ) -> dict:
     """Public endpoint - get current active order for a table (if any)."""
     table = session.exec(
@@ -2230,36 +2357,59 @@ def get_current_order(
 
     if not table:
         raise HTTPException(status_code=404, detail="Table not found")
-
-    # Find active order: not paid AND no [PAID:] in notes
-    potential_orders = session.exec(
-        select(models.Order)
-        .where(models.Order.table_id == table.id, models.Order.status != "paid")
-        .order_by(models.Order.created_at.desc())
-    ).all()
-
+    
+    # If session_id provided, look for order with matching session_id
+    if session_id:
+        potential_orders = session.exec(
+            select(models.Order).where(
+                models.Order.table_id == table.id,
+                models.Order.session_id == session_id,
+                models.Order.status != models.OrderStatus.paid
+            ).order_by(models.Order.created_at.desc())
+        ).all()
+    else:
+        # Backward compatibility: find any unpaid order (old behavior)
+        potential_orders = session.exec(
+            select(models.Order).where(
+                models.Order.table_id == table.id,
+                models.Order.status != models.OrderStatus.paid
+            ).order_by(models.Order.created_at.desc())
+        ).all()
+    
     # Filter out orders with payment confirmation in notes
+    # Also explicitly check status to ensure we don't return paid orders
     active_order = None
     for order in potential_orders:
+        # Explicitly check if order is paid (defensive check)
+        if order.status == models.OrderStatus.paid:
+            continue
         if "[PAID:" not in (order.notes or ""):
             active_order = order
             break
 
     if not active_order:
         return {"order": None}
-
-    # Get order items
+    
+    # Get order items (exclude removed items for customer view)
+    # Order by ID descending so newest items appear first (for customer view)
     items = session.exec(
-        select(models.OrderItem).where(models.OrderItem.order_id == active_order.id)
+        select(models.OrderItem).where(
+            models.OrderItem.order_id == active_order.id,
+            models.OrderItem.removed_by_customer == False
+        ).order_by(models.OrderItem.id.desc())
     ).all()
-
+    
+    # Compute order status from items
+    all_items = session.exec(select(models.OrderItem).where(models.OrderItem.order_id == active_order.id)).all()
+    computed_status = compute_order_status_from_items(all_items)
+    
     return {
         "order": {
             "id": active_order.id,
-            "status": active_order.status.value
-            if hasattr(active_order.status, "value")
-            else str(active_order.status),
+            "status": computed_status.value,
             "notes": active_order.notes,
+            "session_id": active_order.session_id,
+            "customer_name": active_order.customer_name,
             "created_at": active_order.created_at.isoformat(),
             "items": [
                 {
@@ -2269,6 +2419,7 @@ def get_current_order(
                     "quantity": item.quantity,
                     "price_cents": item.price_cents,
                     "notes": item.notes,
+                    "status": item.status.value if hasattr(item.status, 'value') else str(item.status)
                 }
                 for item in items
             ],
@@ -2305,18 +2456,38 @@ def create_order(
     for o in all_orders:
         has_paid_note = "[PAID:" in (o.notes or "")
         print(f"  - Order #{o.id}: status={o.status!r}, has_paid_note={has_paid_note}")
-
-    # Check for existing unpaid order for this table (reuse until paid)
-    # Get all non-paid orders, then filter out ones with payment confirmation in notes
-    potential_orders = session.exec(
-        select(models.Order)
-        .where(models.Order.table_id == table.id, models.Order.status != "paid")
-        .order_by(models.Order.created_at.desc())
-    ).all()
-
+    
+    # Check for existing unpaid order for this table and session (reuse until paid)
+    # If session_id provided, only look for orders with matching session_id
+    # Otherwise, fall back to old behavior (any unpaid order for table)
+    if order_data.session_id:
+        potential_orders = session.exec(
+            select(models.Order).where(
+                models.Order.table_id == table.id,
+                models.Order.session_id == order_data.session_id,
+                models.Order.status != models.OrderStatus.paid
+            ).order_by(models.Order.created_at.desc())
+        ).all()
+        print(f"[DEBUG] Looking for orders with session_id={order_data.session_id}")
+    else:
+        # Backward compatibility: find any unpaid order (old behavior)
+        potential_orders = session.exec(
+            select(models.Order).where(
+                models.Order.table_id == table.id,
+                models.Order.status != models.OrderStatus.paid
+            ).order_by(models.Order.created_at.desc())
+        ).all()
+        print(f"[DEBUG] No session_id provided, using backward compatibility mode")
+    
     # Filter out orders that have payment confirmation in notes (edge case for corrupted data)
+    # Also explicitly check status to prevent adding items to paid orders
     existing_order = None
     for order in potential_orders:
+        # Explicitly check if order is paid (defensive check)
+        if order.status == models.OrderStatus.paid:
+            print(f"[DEBUG] Skipping order #{order.id} - status is paid")
+            continue
+        
         has_paid_note = "[PAID:" in (order.notes or "")
         if not has_paid_note:
             existing_order = order
@@ -2328,33 +2499,39 @@ def create_order(
 
     print(f"[DEBUG] Query result after filtering: {existing_order}")
     if existing_order:
-        print(
-            f"[DEBUG] Found existing order #{existing_order.id} with status={existing_order.status!r}"
-        )
+        # Final safety check: never reuse a paid order
+        if existing_order.status == models.OrderStatus.paid:
+            print(f"[DEBUG] Found order #{existing_order.id} is paid - will create new order instead")
+            existing_order = None
+        else:
+            print(f"[DEBUG] Found existing order #{existing_order.id} with status={existing_order.status!r}")
     else:
         print(f"[DEBUG] No existing unpaid order found - will create new one")
 
     is_new_order = existing_order is None
 
     if is_new_order:
+        # Generate session_id if not provided (for backward compatibility)
+        session_id = order_data.session_id
+        if not session_id:
+            session_id = str(uuid4())
+            print(f"[DEBUG] Generated new session_id: {session_id}")
+        
         # Create new order
         order = models.Order(
-            tenant_id=table.tenant_id, table_id=table.id, notes=order_data.notes
+            tenant_id=table.tenant_id,
+            table_id=table.id,
+            session_id=session_id,
+            customer_name=order_data.customer_name,
+            notes=order_data.notes
         )
         session.add(order)
         session.commit()
         session.refresh(order)
-        print(f"[DEBUG] Created NEW order #{order.id}")
+        print(f"[DEBUG] Created NEW order #{order.id} with session_id={session_id}, customer_name={order_data.customer_name}")
     else:
         order = existing_order
         print(f"[DEBUG] REUSING existing order #{order.id}")
-        # If the order was completed, reset it to pending since new items were added
-        if (
-            str(order.status) == "completed"
-            or order.status == models.OrderStatus.completed
-        ):
-            order.status = models.OrderStatus.pending
-            print(f"[DEBUG] Reset order status from completed to pending")
         # Append notes if provided
         if order_data.notes:
             order.notes = f"{order.notes or ''}\n{order_data.notes}".strip()
@@ -2364,44 +2541,75 @@ def create_order(
 
     # Add order items
     for item in order_data.items:
-        # First try TenantProduct (catalog system), then fallback to legacy Product
-        tenant_product = session.exec(
-            select(models.TenantProduct).where(
-                models.TenantProduct.id == item.product_id,
-                models.TenantProduct.tenant_id == table.tenant_id,
-            )
-        ).first()
-
-        if tenant_product:
+        # Use source indicator if provided, otherwise try TenantProduct first, then legacy Product
+        product_name = None
+        price_cents = None
+        
+        if item.source == "tenant_product":
+            # Explicitly look up TenantProduct
+            tenant_product = session.exec(
+                select(models.TenantProduct).where(
+                    models.TenantProduct.id == item.product_id,
+                    models.TenantProduct.tenant_id == table.tenant_id
+                )
+            ).first()
+            if not tenant_product:
+                raise HTTPException(status_code=400, detail=f"TenantProduct {item.product_id} not found")
             product_name = tenant_product.name
             price_cents = tenant_product.price_cents
-        else:
-            # Fallback to legacy Product table
+        elif item.source == "product":
+            # Explicitly look up legacy Product
             product = session.exec(
                 select(models.Product).where(
                     models.Product.id == item.product_id,
                     models.Product.tenant_id == table.tenant_id,
                 )
             ).first()
-
             if not product:
-                raise HTTPException(
-                    status_code=400, detail=f"Product {item.product_id} not found"
-                )
-
+                raise HTTPException(status_code=400, detail=f"Product {item.product_id} not found")
             product_name = product.name
             price_cents = product.price_cents
-
-        # Check if this product already exists in the order
+        else:
+            # No source specified - try TenantProduct first, then fallback to legacy Product
+            # This maintains backward compatibility
+            tenant_product = session.exec(
+                select(models.TenantProduct).where(
+                    models.TenantProduct.id == item.product_id,
+                    models.TenantProduct.tenant_id == table.tenant_id
+                )
+            ).first()
+            
+            if tenant_product:
+                product_name = tenant_product.name
+                price_cents = tenant_product.price_cents
+            else:
+                # Fallback to legacy Product table
+                product = session.exec(
+                    select(models.Product).where(
+                        models.Product.id == item.product_id,
+                        models.Product.tenant_id == table.tenant_id
+                    )
+                ).first()
+                
+                if not product:
+                    raise HTTPException(status_code=400, detail=f"Product {item.product_id} not found")
+                
+                product_name = product.name
+                price_cents = product.price_cents
+        
+        # Check if this product already exists in the order (only active, non-removed items)
+        # Only merge if the existing item is NOT delivered (to preserve item-level status tracking)
         existing_item = session.exec(
             select(models.OrderItem).where(
                 models.OrderItem.order_id == order.id,
                 models.OrderItem.product_id == item.product_id,
+                models.OrderItem.removed_by_customer == False,  # Only check active items
+                models.OrderItem.status != models.OrderItemStatus.delivered  # Don't merge with delivered items
             )
         ).first()
 
         if existing_item:
-            # Increment quantity
+            # Increment quantity (item is active and not delivered)
             existing_item.quantity += item.quantity
             if item.notes:
                 existing_item.notes = (
@@ -2409,7 +2617,10 @@ def create_order(
                 )
             session.add(existing_item)
         else:
-            # Create new order item
+            # Create new order item with default status
+            # This happens when:
+            # 1. No existing item found, OR
+            # 2. Existing item is delivered (we create a new item to track separately)
             order_item = models.OrderItem(
                 order_id=order.id,
                 product_id=item.product_id,
@@ -2417,9 +2628,18 @@ def create_order(
                 quantity=item.quantity,
                 price_cents=price_cents,
                 notes=item.notes,
+                status=models.OrderItemStatus.pending  # New items start as pending
             )
             session.add(order_item)
-
+    
+    # After adding items, recompute order status from all items (if not paid or cancelled)
+    # This ensures correct status like 'partially_delivered' when there are both delivered and undelivered items
+    if order.status not in [models.OrderStatus.paid, models.OrderStatus.cancelled]:
+        all_items = session.exec(select(models.OrderItem).where(models.OrderItem.order_id == order.id)).all()
+        computed_status = compute_order_status_from_items(all_items)
+        order.status = computed_status
+        print(f"[DEBUG] Recomputed order status from items: {computed_status.value}")
+    
     session.commit()
     session.refresh(order)
 
@@ -2435,27 +2655,66 @@ def create_order(
             logger.warning(f"Inventory deduction warning for order #{order.id}: {e}")
 
     # Publish to Redis for real-time updates
-    publish_order_update(
-        table.tenant_id,
-        {
-            "type": "new_order" if is_new_order else "items_added",
-            "order_id": order.id,
-            "table_name": table.name,
-            "status": order.status.value,
-            "created_at": order.created_at.isoformat(),
-        },
-    )
-
-    return {"status": "created" if is_new_order else "updated", "order_id": order.id}
+    publish_order_update(table.tenant_id, {
+        "type": "new_order" if is_new_order else "items_added",
+        "order_id": order.id,
+        "table_name": table.name,
+        "status": order.status.value,
+        "created_at": order.created_at.isoformat()
+    }, table_id=table.id)
+    
+    return {
+        "status": "created" if is_new_order else "updated",
+        "order_id": order.id,
+        "session_id": order.session_id,
+        "customer_name": order.customer_name
+    }
 
 
 # ============ ORDERS (Protected) ============
+
+def compute_order_status_from_items(items: list[models.OrderItem]) -> models.OrderStatus:
+    """Compute order status from item statuses (single source of truth)."""
+    if not items:
+        return models.OrderStatus.pending
+    
+    # Filter out removed items for status computation (removed by customer OR staff)
+    active_items = [item for item in items if not item.removed_by_customer and item.removed_by_user_id is None]
+    if not active_items:
+        return models.OrderStatus.cancelled
+    
+    # Check if all items are delivered
+    all_delivered = all(item.status == models.OrderItemStatus.delivered for item in active_items)
+    if all_delivered:
+        return models.OrderStatus.completed
+    
+    # Check if some items are delivered (partial delivery)
+    any_delivered = any(item.status == models.OrderItemStatus.delivered for item in active_items)
+    if any_delivered:
+        return models.OrderStatus.partially_delivered
+    
+    # Check if all items are ready
+    all_ready = all(item.status == models.OrderItemStatus.ready for item in active_items)
+    if all_ready:
+        return models.OrderStatus.ready
+    
+    # Check if any item is preparing or ready
+    any_preparing_or_ready = any(
+        item.status in [models.OrderItemStatus.preparing, models.OrderItemStatus.ready] 
+        for item in active_items
+    )
+    if any_preparing_or_ready:
+        return models.OrderStatus.preparing
+    
+    # All items are pending
+    return models.OrderStatus.pending
 
 
 @app.get("/orders")
 def list_orders(
     current_user: Annotated[models.User, Depends(security.get_current_user)],
-    session: Session = Depends(get_session),
+    include_removed: bool = Query(False, description="Include removed items in response"),
+    session: Session = Depends(get_session)
 ) -> list[dict]:
     orders = session.exec(
         select(models.Order)
@@ -2465,34 +2724,66 @@ def list_orders(
 
     result = []
     for order in orders:
-        table = session.exec(
-            select(models.Table).where(models.Table.id == order.table_id)
-        ).first()
-        items = session.exec(
-            select(models.OrderItem).where(models.OrderItem.order_id == order.id)
-        ).all()
-
-        result.append(
-            {
-                "id": order.id,
-                "table_name": table.name if table else "Unknown",
-                "status": order.status.value,
-                "notes": order.notes,
-                "created_at": order.created_at.isoformat(),
-                "items": [
-                    {
-                        "id": item.id,
-                        "product_name": item.product_name,
-                        "quantity": item.quantity,
-                        "price_cents": item.price_cents,
-                        "notes": item.notes,
-                    }
-                    for item in items
-                ],
-                "total_cents": sum(item.price_cents * item.quantity for item in items),
-            }
-        )
-
+        table = session.exec(select(models.Table).where(models.Table.id == order.table_id)).first()
+        
+        # Get items, optionally including removed ones
+        if include_removed:
+            items = session.exec(
+                select(models.OrderItem)
+                .where(models.OrderItem.order_id == order.id)
+                .order_by(models.OrderItem.removed_by_customer.asc(), models.OrderItem.created_at.asc())
+            ).all()
+        else:
+            items = session.exec(
+                select(models.OrderItem)
+                .where(
+                    models.OrderItem.order_id == order.id,
+                    models.OrderItem.removed_by_customer == False
+                )
+            ).all()
+        
+        # Compute order status from items (if not paid or cancelled)
+        computed_status = order.status
+        if order.status not in [models.OrderStatus.paid, models.OrderStatus.cancelled]:
+            computed_status = compute_order_status_from_items(
+                session.exec(select(models.OrderItem).where(models.OrderItem.order_id == order.id)).all()
+            )
+        
+        # Get all items for removed count calculation
+        all_items = session.exec(select(models.OrderItem).where(models.OrderItem.order_id == order.id)).all()
+        
+        # Calculate total from active items only (exclude items removed by customer OR staff)
+        active_items = [item for item in all_items if not item.removed_by_customer and item.removed_by_user_id is None]
+        total_cents = sum(item.price_cents * item.quantity for item in active_items)
+        
+        result.append({
+            "id": order.id,
+            "table_name": table.name if table else "Unknown",
+            "status": computed_status.value,
+            "notes": order.notes,
+            "session_id": order.session_id,
+            "customer_name": order.customer_name,
+            "created_at": order.created_at.isoformat(),
+            "paid_at": order.paid_at.isoformat() if order.paid_at else None,
+            "payment_method": order.payment_method,
+            "items": [
+                {
+                    "id": item.id,
+                    "product_name": item.product_name,
+                    "quantity": item.quantity,
+                    "price_cents": item.price_cents,
+                    "notes": item.notes,
+                    "status": item.status.value if hasattr(item.status, 'value') else str(item.status),
+                    "removed_by_customer": item.removed_by_customer,
+                    "removed_at": item.removed_at.isoformat() if item.removed_at else None,
+                    "removed_reason": item.removed_reason
+                }
+                for item in items
+            ],
+            "total_cents": total_cents,
+            "removed_items_count": len([item for item in all_items if item.removed_by_customer])
+        })
+    
     return result
 
 
@@ -2512,26 +2803,745 @@ def update_order_status(
 
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-
+    
+    # Update order status
     order.status = status_update.status
+    
+    # For backward compatibility: if updating order-level status, update all active items
+    # Map order status to item status
+    items = session.exec(select(models.OrderItem).where(models.OrderItem.order_id == order_id)).all()
+    active_items = [item for item in items if not item.removed_by_customer]
+    
+    if active_items:
+        status_mapping = {
+            models.OrderStatus.pending: models.OrderItemStatus.pending,
+            models.OrderStatus.preparing: models.OrderItemStatus.preparing,
+            models.OrderStatus.ready: models.OrderItemStatus.ready,
+            models.OrderStatus.completed: models.OrderItemStatus.delivered,  # completed = all items delivered
+            models.OrderStatus.partially_delivered: models.OrderItemStatus.delivered,  # Partial delivery
+        }
+        
+        item_status = status_mapping.get(status_update.status)
+        if item_status:
+            for item in active_items:
+                # Only update if item is not already delivered
+                if item.status != models.OrderItemStatus.delivered:
+                    item.status = item_status
+                    item.status_updated_at = datetime.now(timezone.utc)
+                    if item_status == models.OrderItemStatus.ready:
+                        item.prepared_by_user_id = current_user.id
+                    elif item_status == models.OrderItemStatus.delivered:
+                        item.delivered_by_user_id = current_user.id
+                    session.add(item)
+    
     session.add(order)
     session.commit()
 
     # Publish status update
-    table = session.exec(
-        select(models.Table).where(models.Table.id == order.table_id)
-    ).first()
-    publish_order_update(
-        current_user.tenant_id,
-        {
-            "type": "status_update",
-            "order_id": order.id,
-            "table_name": table.name if table else "Unknown",
-            "status": order.status.value,
-        },
-    )
-
+    table = session.exec(select(models.Table).where(models.Table.id == order.table_id)).first()
+    publish_order_update(current_user.tenant_id, {
+        "type": "status_update",
+        "order_id": order.id,
+        "table_name": table.name if table else "Unknown",
+        "status": order.status.value
+    }, table_id=order.table_id)
+    
     return {"status": "updated", "order_id": order.id, "new_status": order.status.value}
+
+
+@app.put("/orders/{order_id}/mark-paid")
+def mark_order_paid(
+    order_id: int,
+    payment_data: models.OrderMarkPaid,
+    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    session: Session = Depends(get_session)
+) -> dict:
+    """Mark order as paid manually (for cash/terminal payments)."""
+    order = session.exec(
+        select(models.Order).where(
+            models.Order.id == order_id,
+            models.Order.tenant_id == current_user.tenant_id
+        )
+    ).first()
+    
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    # Validation: Order must be completed (all items delivered) before marking as paid
+    if order.status != models.OrderStatus.completed:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Order must be completed before marking as paid. Current status: {order.status.value}"
+        )
+    
+    # Mark as paid
+    order.status = models.OrderStatus.paid
+    order.paid_at = datetime.now(timezone.utc)
+    order.paid_by_user_id = current_user.id
+    order.payment_method = payment_data.payment_method
+    
+    session.add(order)
+    session.commit()
+    
+    # Publish update
+    table = session.exec(select(models.Table).where(models.Table.id == order.table_id)).first()
+    publish_order_update(current_user.tenant_id, {
+        "type": "order_paid",
+        "order_id": order.id,
+        "table_name": table.name if table else "Unknown",
+        "payment_method": payment_data.payment_method
+    }, table_id=order.table_id)
+    
+    return {
+        "status": "paid",
+        "order_id": order.id,
+        "payment_method": payment_data.payment_method,
+        "paid_at": order.paid_at.isoformat()
+    }
+
+
+@app.put("/orders/{order_id}/items/{item_id}/status")
+def update_order_item_status(
+    order_id: int,
+    item_id: int,
+    status_update: models.OrderItemStatusUpdate,
+    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    session: Session = Depends(get_session)
+) -> dict:
+    """Update individual order item status (restaurant staff)."""
+    order = session.exec(
+        select(models.Order).where(
+            models.Order.id == order_id,
+            models.Order.tenant_id == current_user.tenant_id
+        )
+    ).first()
+    
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    item = session.exec(
+        select(models.OrderItem).where(
+            models.OrderItem.id == item_id,
+            models.OrderItem.order_id == order_id
+        )
+    ).first()
+    
+    if not item:
+        raise HTTPException(status_code=404, detail="Order item not found")
+    
+    # Update item status
+    old_status = item.status
+    item.status = status_update.status
+    item.status_updated_at = datetime.now(timezone.utc)
+    
+    # Track who prepared/delivered
+    if status_update.status == models.OrderItemStatus.ready:
+        item.prepared_by_user_id = status_update.user_id or current_user.id
+    elif status_update.status == models.OrderItemStatus.delivered:
+        item.delivered_by_user_id = status_update.user_id or current_user.id
+    
+    session.add(item)
+    
+    # Recompute order status from items
+    all_items = session.exec(select(models.OrderItem).where(models.OrderItem.order_id == order_id)).all()
+    if order.status not in [models.OrderStatus.paid, models.OrderStatus.cancelled]:
+        order.status = compute_order_status_from_items(all_items)
+    
+    session.add(order)
+    session.commit()
+    
+    # Publish update
+    table = session.exec(select(models.Table).where(models.Table.id == order.table_id)).first()
+    publish_order_update(current_user.tenant_id, {
+        "type": "item_status_update",
+        "order_id": order.id,
+        "item_id": item.id,
+        "old_status": old_status.value if hasattr(old_status, 'value') else str(old_status),
+        "new_status": item.status.value,
+        "status": order.status.value if hasattr(order.status, 'value') else str(order.status),  # Include computed order status
+        "table_name": table.name if table else "Unknown"
+    }, table_id=order.table_id)
+    
+    return {
+        "status": "updated",
+        "order_id": order.id,
+        "item_id": item.id,
+        "item_status": item.status.value,
+        "order_status": order.status.value
+    }
+
+
+@app.put("/orders/{order_id}/items/{item_id}/reset-status")
+def reset_item_status(
+    order_id: int,
+    item_id: int,
+    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    session: Session = Depends(get_session)
+) -> dict:
+    """Reset item status from preparing to pending (restaurant staff only)."""
+    order = session.exec(
+        select(models.Order).where(
+            models.Order.id == order_id,
+            models.Order.tenant_id == current_user.tenant_id
+        )
+    ).first()
+    
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    item = session.exec(
+        select(models.OrderItem).where(
+            models.OrderItem.id == item_id,
+            models.OrderItem.order_id == order_id
+        )
+    ).first()
+    
+    if not item:
+        raise HTTPException(status_code=404, detail="Order item not found")
+    
+    # Validation: Can only reset from preparing to pending
+    if item.status != models.OrderItemStatus.preparing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot reset status from {item.status.value}. Only 'preparing' items can be reset to 'pending'."
+        )
+    
+    # Reset status
+    old_status = item.status
+    item.status = models.OrderItemStatus.pending
+    item.status_updated_at = datetime.now(timezone.utc)
+    item.prepared_by_user_id = None  # Clear prepared_by since we're resetting
+    
+    session.add(item)
+    
+    # Recompute order status
+    all_items = session.exec(select(models.OrderItem).where(models.OrderItem.order_id == order_id)).all()
+    if order.status not in [models.OrderStatus.paid, models.OrderStatus.cancelled]:
+        order.status = compute_order_status_from_items(all_items)
+    
+    session.add(order)
+    session.commit()
+    
+    # Publish update
+    table = session.exec(select(models.Table).where(models.Table.id == order.table_id)).first()
+    publish_order_update(current_user.tenant_id, {
+        "type": "item_status_update",
+        "order_id": order.id,
+        "item_id": item.id,
+        "old_status": old_status.value,
+        "new_status": item.status.value,
+        "status": order.status.value,
+        "table_name": table.name if table else "Unknown"
+    }, table_id=order.table_id)
+    
+    return {
+        "status": "reset",
+        "order_id": order.id,
+        "item_id": item.id,
+        "old_status": old_status.value,
+        "new_status": item.status.value,
+        "order_status": order.status.value
+    }
+
+
+@app.put("/orders/{order_id}/items/{item_id}/cancel")
+def cancel_order_item_staff(
+    order_id: int,
+    item_id: int,
+    cancel_data: models.OrderItemCancel,
+    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    session: Session = Depends(get_session)
+) -> dict:
+    """Cancel order item (restaurant staff) - requires reason if item is ready."""
+    order = session.exec(
+        select(models.Order).where(
+            models.Order.id == order_id,
+            models.Order.tenant_id == current_user.tenant_id
+        )
+    ).first()
+    
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    item = session.exec(
+        select(models.OrderItem).where(
+            models.OrderItem.id == item_id,
+            models.OrderItem.order_id == order_id
+        )
+    ).first()
+    
+    if not item:
+        raise HTTPException(status_code=404, detail="Order item not found")
+    
+    # Validation: Cannot cancel delivered items
+    if item.status == models.OrderItemStatus.delivered:
+        raise HTTPException(status_code=400, detail="Cannot cancel delivered items")
+    
+    # Validation: If item is ready, reason is required (for tax authorities)
+    if item.status == models.OrderItemStatus.ready and not cancel_data.reason:
+        raise HTTPException(
+            status_code=400,
+            detail="Reason is required when cancelling ready items (required for tax reporting)"
+        )
+    
+    # Cancel item (soft delete)
+    item.removed_by_customer = False  # Removed by staff, not customer
+    item.removed_by_user_id = current_user.id
+    item.removed_at = datetime.now(timezone.utc)
+    item.removed_reason = cancel_data.reason
+    item.cancelled_reason = cancel_data.reason  # Store for tax reporting
+    item.status = models.OrderItemStatus.cancelled
+    
+    session.add(item)
+    
+    # Recompute order status and total
+    all_items = session.exec(select(models.OrderItem).where(models.OrderItem.order_id == order_id)).all()
+    if order.status not in [models.OrderStatus.paid, models.OrderStatus.cancelled]:
+        order.status = compute_order_status_from_items(all_items)
+    
+    session.add(order)
+    session.commit()
+    
+    # Calculate new total
+    active_items = [i for i in all_items if not i.removed_by_customer and i.removed_by_user_id is None]
+    new_total = sum(i.price_cents * i.quantity for i in active_items)
+    
+    # Publish update
+    table = session.exec(select(models.Table).where(models.Table.id == order.table_id)).first()
+    publish_order_update(current_user.tenant_id, {
+        "type": "item_cancelled",
+        "order_id": order.id,
+        "item_id": item.id,
+        "cancelled_by": "staff",
+        "table_name": table.name if table else "Unknown",
+        "new_total_cents": new_total
+    }, table_id=order.table_id)
+    
+    return {
+        "status": "item_cancelled",
+        "order_id": order.id,
+        "item_id": item.id,
+        "new_total_cents": new_total
+    }
+
+
+@app.put("/orders/{order_id}/items/{item_id}")
+def update_order_item_staff(
+    order_id: int,
+    item_id: int,
+    item_update: models.OrderItemStaffUpdate,
+    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    session: Session = Depends(get_session)
+) -> dict:
+    """Update order item (restaurant staff) - can modify any item except delivered."""
+    order = session.exec(
+        select(models.Order).where(
+            models.Order.id == order_id,
+            models.Order.tenant_id == current_user.tenant_id
+        )
+    ).first()
+    
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    item = session.exec(
+        select(models.OrderItem).where(
+            models.OrderItem.id == item_id,
+            models.OrderItem.order_id == order_id
+        )
+    ).first()
+    
+    if not item:
+        raise HTTPException(status_code=404, detail="Order item not found")
+    
+    # Validation: Cannot modify delivered items
+    if item.status == models.OrderItemStatus.delivered:
+        raise HTTPException(status_code=400, detail="Cannot modify delivered items")
+    
+    # Update item
+    if item_update.quantity is not None:
+        if item_update.quantity <= 0:
+            # Remove item (soft delete)
+            item.removed_by_customer = False
+            item.removed_by_user_id = current_user.id
+            item.removed_at = datetime.now(timezone.utc)
+            item.status = models.OrderItemStatus.cancelled
+        else:
+            item.quantity = item_update.quantity
+            item.modified_by_user_id = current_user.id
+            item.modified_at = datetime.now(timezone.utc)
+    
+    if item_update.notes is not None:
+        item.notes = item_update.notes
+        item.modified_by_user_id = current_user.id
+        item.modified_at = datetime.now(timezone.utc)
+    
+    session.add(item)
+    
+    # Recompute order status and total
+    all_items = session.exec(select(models.OrderItem).where(models.OrderItem.order_id == order_id)).all()
+    if order.status not in [models.OrderStatus.paid, models.OrderStatus.cancelled]:
+        order.status = compute_order_status_from_items(all_items)
+    
+    session.add(order)
+    session.commit()
+    
+    # Calculate new total
+    active_items = [i for i in all_items if not i.removed_by_customer and i.removed_by_user_id is None]
+    new_total = sum(i.price_cents * i.quantity for i in active_items)
+    
+    # Publish update
+    table = session.exec(select(models.Table).where(models.Table.id == order.table_id)).first()
+    publish_order_update(current_user.tenant_id, {
+        "type": "item_updated",
+        "order_id": order.id,
+        "item_id": item.id,
+        "new_quantity": item.quantity,
+        "table_name": table.name if table else "Unknown",
+        "new_total_cents": new_total
+    }, table_id=order.table_id)
+    
+    return {
+        "status": "item_updated",
+        "order_id": order.id,
+        "item_id": item.id,
+        "new_quantity": item.quantity,
+        "new_total_cents": new_total
+    }
+
+
+@app.delete("/orders/{order_id}/items/{item_id}")
+def remove_order_item_staff(
+    order_id: int,
+    item_id: int,
+    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    reason: str | None = Query(None, description="Required reason when removing ready items"),
+    session: Session = Depends(get_session)
+) -> dict:
+    """Remove order item (restaurant staff) - requires reason if item is ready."""
+    order = session.exec(
+        select(models.Order).where(
+            models.Order.id == order_id,
+            models.Order.tenant_id == current_user.tenant_id
+        )
+    ).first()
+    
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    item = session.exec(
+        select(models.OrderItem).where(
+            models.OrderItem.id == item_id,
+            models.OrderItem.order_id == order_id
+        )
+    ).first()
+    
+    if not item:
+        raise HTTPException(status_code=404, detail="Order item not found")
+    
+    # Validation: Cannot remove delivered items
+    if item.status == models.OrderItemStatus.delivered:
+        raise HTTPException(status_code=400, detail="Cannot remove delivered items")
+    
+    # Validation: If item is ready, reason is required
+    if item.status == models.OrderItemStatus.ready:
+        if not reason:
+            raise HTTPException(
+                status_code=400,
+                detail="Reason is required when removing ready items (required for tax reporting)"
+            )
+    
+    # Soft delete
+    item.removed_by_customer = False
+    item.removed_by_user_id = current_user.id
+    item.removed_at = datetime.now(timezone.utc)
+    item.removed_reason = reason
+    item.cancelled_reason = reason
+    item.status = models.OrderItemStatus.cancelled
+    
+    session.add(item)
+    
+    # Recompute order status and total
+    all_items = session.exec(select(models.OrderItem).where(models.OrderItem.order_id == order_id)).all()
+    if order.status not in [models.OrderStatus.paid, models.OrderStatus.cancelled]:
+        order.status = compute_order_status_from_items(all_items)
+    
+    session.add(order)
+    session.commit()
+    
+    # Calculate new total
+    active_items = [i for i in all_items if not i.removed_by_customer and i.removed_by_user_id is None]
+    new_total = sum(i.price_cents * i.quantity for i in active_items)
+    
+    # Publish update
+    table = session.exec(select(models.Table).where(models.Table.id == order.table_id)).first()
+    publish_order_update(current_user.tenant_id, {
+        "type": "item_removed",
+        "order_id": order.id,
+        "item_id": item.id,
+        "removed_by": "staff",
+        "table_name": table.name if table else "Unknown",
+        "new_total_cents": new_total
+    }, table_id=order.table_id)
+    
+    return {
+        "status": "item_removed",
+        "order_id": order.id,
+        "removed_item_id": item.id,
+        "new_total_cents": new_total
+    }
+
+
+# ============ ORDER MODIFICATION (Public - Customer) ============
+
+@app.delete("/menu/{table_token}/order/{order_id}/items/{item_id}")
+def remove_order_item(
+    table_token: str,
+    order_id: int,
+    item_id: int,
+    session_id: str | None = Query(None, description="Session identifier for order validation"),
+    reason: str | None = Query(None, description="Optional reason for removal"),
+    session: Session = Depends(get_session)
+) -> dict:
+    """Remove item from order (soft delete - customer)."""
+    table = session.exec(select(models.Table).where(models.Table.token == table_token)).first()
+    if not table:
+        raise HTTPException(status_code=404, detail="Table not found")
+    
+    order = session.exec(
+        select(models.Order).where(
+            models.Order.id == order_id,
+            models.Order.table_id == table.id
+        )
+    ).first()
+    
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    # Security: Validate that order belongs to this session
+    if session_id and order.session_id and order.session_id != session_id:
+        raise HTTPException(status_code=403, detail="Order does not belong to this session")
+    
+    item = session.exec(
+        select(models.OrderItem).where(
+            models.OrderItem.id == item_id,
+            models.OrderItem.order_id == order_id
+        )
+    ).first()
+    
+    if not item:
+        raise HTTPException(status_code=404, detail="Order item not found")
+    
+    # Validation: Cannot remove items that are already being prepared or delivered
+    if item.status in [models.OrderItemStatus.delivered, models.OrderItemStatus.preparing, models.OrderItemStatus.ready]:
+        status_label = {
+            models.OrderItemStatus.delivered: "delivered",
+            models.OrderItemStatus.preparing: "being prepared",
+            models.OrderItemStatus.ready: "ready"
+        }.get(item.status, "in progress")
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Cannot remove items that are {status_label}. Only pending items can be removed."
+        )
+    
+    # Soft delete: Mark as removed (NEVER actually delete)
+    item.removed_by_customer = True
+    item.removed_at = datetime.now(timezone.utc)
+    item.removed_reason = reason
+    item.status = models.OrderItemStatus.cancelled
+    
+    session.add(item)
+    
+    # Recompute order status and total
+    all_items = session.exec(select(models.OrderItem).where(models.OrderItem.order_id == order_id)).all()
+    if order.status not in [models.OrderStatus.paid, models.OrderStatus.cancelled]:
+        order.status = compute_order_status_from_items(all_items)
+    
+    session.add(order)
+    session.commit()
+    
+    # Calculate new total (exclude removed items)
+    active_items = [i for i in all_items if not i.removed_by_customer]
+    new_total = sum(i.price_cents * i.quantity for i in active_items)
+    
+    # Publish update
+    publish_order_update(order.tenant_id, {
+        "type": "item_removed",
+        "order_id": order.id,
+        "item_id": item.id,
+        "table_name": table.name,
+        "new_total_cents": new_total
+    }, table_id=order.table_id)
+    
+    return {
+        "status": "item_removed",
+        "order_id": order.id,
+        "removed_item_id": item.id,
+        "new_total_cents": new_total,
+        "items_remaining": len(active_items)
+    }
+
+
+@app.put("/menu/{table_token}/order/{order_id}/items/{item_id}")
+def update_order_item_quantity(
+    table_token: str,
+    order_id: int,
+    item_id: int,
+    item_update: models.OrderItemUpdate,
+    session_id: str | None = Query(None, description="Session identifier for order validation"),
+    session: Session = Depends(get_session)
+) -> dict:
+    """Update order item quantity (customer)."""
+    table = session.exec(select(models.Table).where(models.Table.token == table_token)).first()
+    if not table:
+        raise HTTPException(status_code=404, detail="Table not found")
+    
+    order = session.exec(
+        select(models.Order).where(
+            models.Order.id == order_id,
+            models.Order.table_id == table.id
+        )
+    ).first()
+    
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    # Security: Validate that order belongs to this session
+    if session_id and order.session_id and order.session_id != session_id:
+        raise HTTPException(status_code=403, detail="Order does not belong to this session")
+    
+    item = session.exec(
+        select(models.OrderItem).where(
+            models.OrderItem.id == item_id,
+            models.OrderItem.order_id == order_id
+        )
+    ).first()
+    
+    if not item:
+        raise HTTPException(status_code=404, detail="Order item not found")
+    
+    # Validation: Cannot modify items that are already being prepared or delivered
+    if item.status in [models.OrderItemStatus.delivered, models.OrderItemStatus.preparing, models.OrderItemStatus.ready]:
+        status_label = {
+            models.OrderItemStatus.delivered: "delivered",
+            models.OrderItemStatus.preparing: "being prepared",
+            models.OrderItemStatus.ready: "ready"
+        }.get(item.status, "in progress")
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Cannot modify items that are {status_label}. Only pending items can be modified."
+        )
+    
+    # If quantity is 0, remove item (soft delete)
+    if item_update.quantity <= 0:
+        item.removed_by_customer = True
+        item.removed_at = datetime.now(timezone.utc)
+        item.status = models.OrderItemStatus.cancelled
+    else:
+        item.quantity = item_update.quantity
+    
+    session.add(item)
+    
+    # Recompute order status and total
+    all_items = session.exec(select(models.OrderItem).where(models.OrderItem.order_id == order_id)).all()
+    if order.status not in [models.OrderStatus.paid, models.OrderStatus.cancelled]:
+        order.status = compute_order_status_from_items(all_items)
+    
+    session.add(order)
+    session.commit()
+    
+    # Calculate new total (exclude items removed by customer OR staff)
+    active_items = [i for i in all_items if not i.removed_by_customer and i.removed_by_user_id is None]
+    new_total = sum(i.price_cents * i.quantity for i in active_items)
+    
+    # Publish update
+    publish_order_update(order.tenant_id, {
+        "type": "item_updated",
+        "order_id": order.id,
+        "item_id": item.id,
+        "new_quantity": item.quantity,
+        "table_name": table.name,
+        "new_total_cents": new_total
+    }, table_id=order.table_id)
+    
+    return {
+        "status": "item_updated",
+        "order_id": order.id,
+        "item_id": item.id,
+        "new_quantity": item.quantity,
+        "new_total_cents": new_total
+    }
+
+
+@app.delete("/menu/{table_token}/order/{order_id}")
+def cancel_order(
+    table_token: str,
+    order_id: int,
+    session_id: str | None = Query(None, description="Session identifier for order validation"),
+    session: Session = Depends(get_session)
+) -> dict:
+    """Cancel entire order (soft delete - customer)."""
+    table = session.exec(select(models.Table).where(models.Table.token == table_token)).first()
+    if not table:
+        raise HTTPException(status_code=404, detail="Table not found")
+    
+    order = session.exec(
+        select(models.Order).where(
+            models.Order.id == order_id,
+            models.Order.table_id == table.id
+        )
+    ).first()
+    
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    # Security: Validate that order belongs to this session
+    if session_id and order.session_id and order.session_id != session_id:
+        raise HTTPException(status_code=403, detail="Order does not belong to this session")
+    
+    # Validation: Cannot cancel if any items are being prepared, ready, or delivered
+    items = session.exec(select(models.OrderItem).where(models.OrderItem.order_id == order_id)).all()
+    active_items = [item for item in items if not item.removed_by_customer]
+    in_progress_items = [
+        item for item in active_items 
+        if item.status in [models.OrderItemStatus.preparing, models.OrderItemStatus.ready, models.OrderItemStatus.delivered]
+    ]
+    if in_progress_items:
+        statuses = [item.status.value for item in in_progress_items]
+        if models.OrderItemStatus.delivered.value in statuses:
+            raise HTTPException(status_code=400, detail="Cannot cancel order with delivered items")
+        elif models.OrderItemStatus.ready.value in statuses:
+            raise HTTPException(status_code=400, detail="Cannot cancel order with items that are ready. Only pending items can be cancelled.")
+        else:
+            raise HTTPException(status_code=400, detail="Cannot cancel order with items that are being prepared. Only pending items can be cancelled.")
+    
+    # Soft delete: Mark order and all items as cancelled
+    order.status = models.OrderStatus.cancelled
+    order.cancelled_at = datetime.now(timezone.utc)
+    order.cancelled_by = "customer"
+    
+    for item in items:
+        if not item.removed_by_customer:  # Only cancel items not already removed
+            item.removed_by_customer = True
+            item.removed_at = datetime.now(timezone.utc)
+            item.status = models.OrderItemStatus.cancelled
+    
+    session.add(order)
+    session.commit()
+    
+    # Publish update
+    publish_order_update(order.tenant_id, {
+        "type": "order_cancelled",
+        "order_id": order.id,
+        "table_name": table.name,
+        "cancelled_items": len(items)
+    }, table_id=order.table_id)
+    
+    return {
+        "status": "order_cancelled",
+        "order_id": order.id,
+        "cancelled_items": len(items)
+    }
 
 
 # ============ PAYMENTS (Public - for customer checkout) ============
@@ -2673,16 +3683,13 @@ def confirm_payment(
         session.commit()
 
         # Notify tenant
-        publish_order_update(
-            order.tenant_id,
-            {
-                "type": "order_paid",
-                "order_id": order.id,
-                "table_name": table.name,
-                "status": order.status.value,
-            },
-        )
-
+        publish_order_update(order.tenant_id, {
+            "type": "order_paid",
+            "order_id": order.id,
+            "table_name": table.name,
+            "status": order.status.value
+        }, table_id=order.table_id)
+        
         return {"status": "paid", "order_id": order.id}
     except stripe.error.StripeError as e:
         raise HTTPException(status_code=400, detail=str(e))

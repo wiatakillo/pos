@@ -638,6 +638,40 @@ import { TranslateModule } from '@ngx-translate/core';
         border-bottom: 1px solid var(--color-border);
       }
 
+      .section-header-with-link {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: var(--space-4);
+        padding-bottom: var(--space-2);
+        border-bottom: 1px solid var(--color-border);
+
+        h2 {
+          margin-bottom: 0;
+          padding-bottom: 0;
+          border-bottom: none;
+        }
+      }
+
+      .external-link {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-2);
+        font-size: 0.875rem;
+        color: var(--color-primary);
+        text-decoration: none;
+        font-weight: 500;
+        transition: color 0.15s ease;
+
+        &:hover {
+          color: var(--color-primary-hover);
+        }
+
+        svg {
+          flex-shrink: 0;
+        }
+      }
+
       .section-hint {
         font-size: 0.875rem;
         color: var(--color-text-muted);

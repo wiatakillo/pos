@@ -9,11 +9,13 @@
   <link rel="apple-touch-icon" href="/favicon.svg">
   <script>
     // Runtime configuration from environment variables
-    // Values injected here override environment.ts defaults
-    // For local dev with HAProxy, leave these undefined to use /api and /ws prefixes
-    // window.__API_URL__ = 'http://example.com:8020';
-    // window.__WS_URL__ = 'ws://example.com:8021';
-    // window.__STRIPE_PUBLISHABLE_KEY__ = 'pk_test_xxx';
+    // Use relative URLs when behind proxy, or absolute URLs if specified
+    const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host;
+    window.__API_URL__ = window.__API_URL__ || `${protocol}//${host}/api`;
+    window.__WS_URL__ = window.__WS_URL__ || `${wsProtocol}//${host}/ws`;
+    window.__STRIPE_PUBLISHABLE_KEY__ = window.__STRIPE_PUBLISHABLE_KEY__ || '';
   </script>
 </head>
 <body>

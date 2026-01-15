@@ -1,3 +1,26 @@
+# Development Roadmap
+
+## Feature Development Status
+
+### ✅ Completed Features
+- **Order Management System**: Full order lifecycle (pending → preparing → ready → delivered → paid)
+- **Customer Name Support**: Customers can enter their name, displayed in customer-facing menu and admin orders view
+- **Bidirectional Status Controls**: Order and item status can be moved forward and backward with user-friendly dropdown menus
+- **Currency Support**: Restaurant currency settings are respected throughout the application (orders, menu, etc.)
+- **Immediate Payment Required Setting**: Database field and admin settings UI implemented
+- **Customer-Facing Menu**: Full menu browsing, cart, and order placement functionality
+- **Payment Integration**: Stripe payment processing for customer orders
+- **Real-time Updates**: WebSocket support for order status updates
+
+### ❌ Missing Features / To Be Implemented
+- **Implement "Immediate payment required" in customer facing "/menu"**: The `immediate_payment_required` setting exists in the database and can be configured in admin settings, but it's not yet enforced in the customer-facing `/menu` component. When enabled:
+  - The menu endpoint should return `immediate_payment_required` flag
+  - After placing an order, customers should be automatically redirected to payment
+  - The "Pay Now" button should be the primary action (or payment modal should auto-open)
+  - Customers should not be able to proceed without payment when this setting is enabled
+
+---
+
 # Rate Limiting & Security Roadmap
 
 ## Current State Analysis

@@ -46,6 +46,7 @@ export interface Product {
   grape_variety?: string;
   aromas?: string;
   elaboration?: string;
+  _source?: string; // "tenant_product" or "product" to distinguish between TenantProduct and legacy Product
 }
 
 export interface CatalogCategories {
@@ -84,6 +85,10 @@ export interface OrderItem {
   quantity: number;
   price_cents: number;
   notes?: string;
+  status?: string;  // pending, preparing, ready, delivered, cancelled
+  removed_by_customer?: boolean;
+  removed_at?: string;
+  removed_reason?: string;
 }
 
 export interface Order {
@@ -91,9 +96,14 @@ export interface Order {
   table_name: string;
   status: string;
   notes?: string;
+  session_id?: string;
+  customer_name?: string;
   created_at: string;
   items: OrderItem[];
   total_cents: number;
+  removed_items_count?: number;
+  paid_at?: string | null;
+  payment_method?: string | null;
 }
 
 export interface MenuResponse {
@@ -139,11 +149,14 @@ export interface OrderItemCreate {
   product_id: number;
   quantity: number;
   notes?: string;
+  source?: string; // "tenant_product" or "product" to distinguish between TenantProduct and legacy Product
 }
 
 export interface OrderCreate {
   items: OrderItemCreate[];
   notes?: string;
+  session_id?: string;  // Session identifier for order isolation
+  customer_name?: string;  // Optional customer name
 }
 
 // Provider & Catalog Interfaces
@@ -372,12 +385,80 @@ export class ApiService {
   }
 
   // Orders
-  getOrders(): Observable<Order[]> {
-    return this.http.get<Order[]>(`${this.apiUrl}/orders`);
+  getOrders(includeRemoved: boolean = false): Observable<Order[]> {
+    const params = includeRemoved ? { params: { include_removed: 'true' } } : {};
+    return this.http.get<Order[]>(`${this.apiUrl}/orders`, params);
   }
 
   updateOrderStatus(orderId: number, status: string): Observable<any> {
     return this.http.put(`${this.apiUrl}/orders/${orderId}/status`, { status });
+  }
+
+  updateOrderItemStatus(orderId: number, itemId: number, status: string, userId?: number): Observable<any> {
+    return this.http.put(`${this.apiUrl}/orders/${orderId}/items/${itemId}/status`, {
+      status,
+      user_id: userId
+    });
+  }
+
+  removeOrderItem(tableToken: string, orderId: number, itemId: number, sessionId?: string, reason?: string): Observable<any> {
+    let url = `${this.apiUrl}/menu/${tableToken}/order/${orderId}/items/${itemId}`;
+    const params: string[] = [];
+    if (sessionId) {
+      params.push(`session_id=${encodeURIComponent(sessionId)}`);
+    }
+    if (reason) {
+      params.push(`reason=${encodeURIComponent(reason)}`);
+    }
+    if (params.length > 0) {
+      url += `?${params.join('&')}`;
+    }
+    return this.http.delete(url);
+  }
+
+  updateOrderItemQuantity(tableToken: string, orderId: number, itemId: number, quantity: number, sessionId?: string): Observable<any> {
+    let url = `${this.apiUrl}/menu/${tableToken}/order/${orderId}/items/${itemId}`;
+    if (sessionId) {
+      url += `?session_id=${encodeURIComponent(sessionId)}`;
+    }
+    return this.http.put(url, { quantity });
+  }
+
+  cancelOrder(tableToken: string, orderId: number, sessionId?: string): Observable<any> {
+    let url = `${this.apiUrl}/menu/${tableToken}/order/${orderId}`;
+    if (sessionId) {
+      url += `?session_id=${encodeURIComponent(sessionId)}`;
+    }
+    return this.http.delete(url);
+  }
+
+  // Restaurant staff endpoints
+  markOrderPaid(orderId: number, paymentMethod: string): Observable<any> {
+    return this.http.put(`${this.apiUrl}/orders/${orderId}/mark-paid`, { payment_method: paymentMethod });
+  }
+
+  resetItemStatus(orderId: number, itemId: number): Observable<any> {
+    return this.http.put(`${this.apiUrl}/orders/${orderId}/items/${itemId}/reset-status`, {});
+  }
+
+  cancelOrderItemStaff(orderId: number, itemId: number, reason: string): Observable<any> {
+    return this.http.put(`${this.apiUrl}/orders/${orderId}/items/${itemId}/cancel`, { reason });
+  }
+
+  updateOrderItemQuantityStaff(orderId: number, itemId: number, quantity: number): Observable<any> {
+    return this.http.put(`${this.apiUrl}/orders/${orderId}/items/${itemId}`, { quantity });
+  }
+
+  removeOrderItemStaff(orderId: number, itemId: number, reason?: string): Observable<any> {
+    let url = `${this.apiUrl}/orders/${orderId}/items/${itemId}`;
+    const params: string[] = [];
+    if (reason) {
+      params.push(`reason=${encodeURIComponent(reason)}`);
+    }
+    if (params.length > 0) {
+      url += `?${params.join('&')}`;
+    }
+    return this.http.delete(url);
   }
 
   // Public Menu (no auth)
@@ -389,8 +470,12 @@ export class ApiService {
     return this.http.post(`${this.apiUrl}/menu/${tableToken}/order`, order);
   }
 
-  getCurrentOrder(tableToken: string): Observable<any> {
-    return this.http.get(`${this.apiUrl}/menu/${tableToken}/order`);
+  getCurrentOrder(tableToken: string, sessionId?: string): Observable<any> {
+    let params = new HttpParams();
+    if (sessionId) {
+      params = params.set('session_id', sessionId);
+    }
+    return this.http.get(`${this.apiUrl}/menu/${tableToken}/order`, { params });
   }
 
   // Payments
@@ -450,31 +535,76 @@ export class ApiService {
     return `${this.apiUrl}/uploads/${tenantId}/logo/${logoFilename}`;
   }
 
-  // WebSocket for real-time updates
+  // WebSocket for real-time updates (restaurant owners only)
   connectWebSocket(): void {
     const user = this.getCurrentUser();
     if (!user || this.ws) return;
 
-    this.ws = new WebSocket(`${this.wsUrl}/ws/${user.tenant_id}`);
+    // Normalize WebSocket URL - handle both http/https and ws/wss formats
+    let wsUrl = this.wsUrl;
+    if (wsUrl.startsWith('http://')) {
+      wsUrl = wsUrl.replace('http://', 'ws://');
+    } else if (wsUrl.startsWith('https://')) {
+      wsUrl = wsUrl.replace('https://', 'wss://');
+    } else if (!wsUrl.startsWith('ws://') && !wsUrl.startsWith('wss://')) {
+      // If it doesn't start with a protocol, assume ws://
+      wsUrl = `ws://${wsUrl}`;
+    }
 
-    this.ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        this.orderUpdates.next(data);
-      } catch (e) {
-        console.error('WebSocket parse error:', e);
-      }
-    };
+    // Use tenant endpoint - auth via HttpOnly cookie
+    const wsEndpoint = `${wsUrl}/ws/tenant/${user.tenant_id}`;
 
-    this.ws.onclose = () => {
-      this.ws = null;
-      // Reconnect after 3 seconds
-      setTimeout(() => this.connectWebSocket(), 3000);
-    };
+    try {
+      this.ws = new WebSocket(wsEndpoint);
 
-    this.ws.onerror = () => {
-      this.ws?.close();
-    };
+      this.ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          this.orderUpdates.next(data);
+        } catch (e) {
+          console.error('WebSocket parse error:', e);
+        }
+      };
+
+      this.ws.onclose = (event) => {
+        this.ws = null;
+        console.log(`WebSocket closed: code=${event.code}, reason="${event.reason || 'none'}", wasClean=${event.wasClean}`);
+
+        // Only reconnect if it wasn't a normal closure (code 1000)
+        // Don't reconnect on authentication errors (code 1008)
+        if (event.code !== 1000 && event.code !== 1008) {
+          console.log('WebSocket will reconnect in 3 seconds...');
+          // Reconnect after 3 seconds
+          setTimeout(() => this.connectWebSocket(), 3000);
+        } else if (event.code === 1008) {
+          console.warn('WebSocket connection closed due to authentication error:', event.reason);
+        } else if (event.code === 1000) {
+          console.log('WebSocket closed normally');
+        }
+      };
+
+      this.ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        console.error('WebSocket URL attempted:', wsEndpoint);
+        console.error('User tenant_id:', user.tenant_id);
+        // Try to get more error details
+        if (this.ws) {
+          console.error('WebSocket readyState:', this.ws.readyState);
+          console.error('WebSocket protocol:', this.ws.protocol);
+          console.error('WebSocket url:', this.ws.url);
+        }
+        this.ws?.close();
+      };
+
+      this.ws.onopen = () => {
+        console.log('WebSocket connection opened successfully');
+        console.log('WebSocket URL:', wsEndpoint);
+      };
+    } catch (error) {
+      console.error('Failed to create WebSocket connection:', error);
+      console.error('WebSocket URL attempted:', wsEndpoint);
+      console.error('User:', user);
+    }
   }
 
   disconnectWebSocket(): void {

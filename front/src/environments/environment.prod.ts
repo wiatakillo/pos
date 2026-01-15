@@ -1,14 +1,10 @@
-// Helper to get window config, treating empty string as valid (for relative URLs via HAProxy)
-const getWindowConfig = (key: string, fallback: string): string => {
-  if (typeof window === 'undefined') return fallback;
-  const value = (window as any)[key];
-  return value !== undefined ? value : fallback;
-};
+import { commitHash } from './commit-hash';
 
 export const environment = {
   production: true,
-  apiUrl: getWindowConfig('__API_URL__', '/api'),
-  wsUrl: getWindowConfig('__WS_URL__', '/ws'),
-  stripePublishableKey: getWindowConfig('__STRIPE_PUBLISHABLE_KEY__', ''),
+  apiUrl: (typeof window !== 'undefined' && (window as any).__API_URL__) || '/api',
+  wsUrl: (typeof window !== 'undefined' && (window as any).__WS_URL__) || (typeof window !== 'undefined' ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws` : 'ws://localhost:8021'),
+  stripePublishableKey: (typeof window !== 'undefined' && (window as any).__STRIPE_PUBLISHABLE_KEY__) || '',
   version: '1.0.0',
+  commitHash: commitHash,
 };

@@ -25,7 +25,7 @@ import { TranslateModule } from '@ngx-translate/core';
         <div class="sidebar-header">
           <div class="logo-container">
             <span class="logo">POS</span>
-            <span class="version">v{{ version }}</span>
+            <span class="version">v{{ version }}<span class="commit-hash">{{ commitHash }}</span></span>
           </div>
           <button class="close-btn" (click)="closeSidebar()">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -202,6 +202,14 @@ import { TranslateModule } from '@ngx-translate/core';
       letter-spacing: 0.01em;
       display: block;
       margin-top: 2px;
+    }
+
+    .commit-hash {
+      margin-left: 6px;
+      font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+      font-size: 0.625rem;
+      color: #9CA3AF;
+      opacity: 0.8;
     }
 
     .close-btn {
@@ -435,6 +443,7 @@ export class SidebarComponent implements OnInit {
   sidebarOpen = signal(false);
   inventoryOpen = signal(false);
   version = environment.version;
+  commitHash = environment.commitHash;
 
   ngOnInit() {
     this.api.user$.subscribe(user => this.user.set(user));

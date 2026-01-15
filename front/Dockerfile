@@ -2,6 +2,9 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+# Install git for commit hash generation (needed for build script)
+RUN apk add --no-cache git
+
 # Copy package files
 COPY package*.json ./
 

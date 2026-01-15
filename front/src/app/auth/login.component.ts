@@ -21,6 +21,7 @@ import { ApiService } from '../services/api.service';
             <input 
               id="email" 
               type="email" 
+              name="username"
               formControlName="username" 
               placeholder="you@example.com"
               autocomplete="email"
@@ -32,6 +33,7 @@ import { ApiService } from '../services/api.service';
             <input 
               id="password" 
               type="password" 
+              name="password"
               formControlName="password"
               placeholder="Enter your password"
               autocomplete="current-password"

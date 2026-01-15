@@ -52,7 +52,15 @@ class Settings(BaseSettings):
     cors_origins: str = Field(
         default="http://localhost:4200", validation_alias="CORS_ORIGINS"
     )
-
+    
+    # Email configuration
+    smtp_host: str = Field(default="smtp.gmail.com", validation_alias="SMTP_HOST")
+    smtp_port: int = Field(default=587, validation_alias="SMTP_PORT")
+    smtp_user: str = Field(default="", validation_alias="SMTP_USER")
+    smtp_password: str = Field(default="", validation_alias="SMTP_PASSWORD")
+    smtp_use_tls: bool = Field(default=True, validation_alias="SMTP_USE_TLS")
+    email_from: str = Field(default="noreply@example.com", validation_alias="EMAIL_FROM")
+    email_from_name: str = Field(default="POS2 System", validation_alias="EMAIL_FROM_NAME")
     # Production mode (enables secure cookies, stricter CORS, etc.)
     is_production: bool = Field(default=False, validation_alias="PRODUCTION")
 
