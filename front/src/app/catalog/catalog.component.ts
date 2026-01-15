@@ -1,7 +1,6 @@
 import { Component, inject, signal, OnInit, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { TranslateModule } from '@ngx-translate/core';
 import { ApiService, CatalogItem, TenantProduct } from '../services/api.service';
 import { SidebarComponent } from '../shared/sidebar.component';
 import { environment } from '../../environments/environment';
@@ -9,12 +8,12 @@ import { environment } from '../../environments/environment';
 @Component({
   selector: 'app-catalog',
   standalone: true,
-  imports: [CommonModule, FormsModule, SidebarComponent, TranslateModule],
+  imports: [CommonModule, FormsModule, SidebarComponent],
   template: `
     <app-sidebar>
       <div class="page-header">
-        <h1>{{ 'catalog.title' | translate }}</h1>
-        <p class="subtitle">{{ 'catalog.subtitle' | translate }}</p>
+        <h1>Product Catalog</h1>
+        <p class="subtitle">Browse products from providers and add them to your menu</p>
       </div>
 
       <div class="content">
@@ -22,33 +21,33 @@ import { environment } from '../../environments/environment';
         <div class="filters-card">
           <div class="form-row">
             <div class="form-group">
-              <label for="category">{{ 'catalog.filters.category' | translate }}</label>
+              <label for="category">Category</label>
               <select id="category" [(ngModel)]="selectedCategory" (change)="onFilterChange()">
-                <option value="">{{ 'catalog.filters.allCategories' | translate }}</option>
+                <option value="">All Categories</option>
                 @for (cat of categories(); track cat) {
                   <option [value]="cat">{{ cat }}</option>
                 }
               </select>
             </div>
             <div class="form-group">
-              <label for="subcategory">{{ 'catalog.filters.subcategory' | translate }}</label>
+              <label for="subcategory">Subcategory</label>
               <select id="subcategory" [(ngModel)]="selectedSubcategory" (change)="onFilterChange()" [disabled]="!selectedCategory">
-                <option value="">{{ 'catalog.filters.allSubcategories' | translate }}</option>
+                <option value="">All Subcategories</option>
                 @for (subcat of getSubcategories(); track subcat) {
                   <option [value]="subcat">{{ subcat }}</option>
                 }
               </select>
             </div>
             <div class="form-group">
-              <label for="search">{{ 'catalog.filters.search' | translate }}</label>
-              <input id="search" type="text" [(ngModel)]="searchTerm" (input)="onSearch()" [placeholder]="'catalog.filters.searchPlaceholder' | translate">
+              <label for="search">Search</label>
+              <input id="search" type="text" [(ngModel)]="searchTerm" (input)="onSearch()" placeholder="Search products...">
             </div>
           </div>
         </div>
 
         <!-- Loading -->
         @if (loading()) {
-          <div class="loading">{{ 'common.loading' | translate }}</div>
+          <div class="loading">Loading catalog...</div>
         }
 
         <!-- Error -->
@@ -97,7 +96,7 @@ import { environment } from '../../environments/environment';
                       <span class="detail-badge">{{ item.wine_style }}</span>
                     }
                     @if (item.vintage) {
-                      <span class="detail-badge">{{ 'catalog.item.vintage' | translate }} {{ item.vintage }}</span>
+                      <span class="detail-badge">Vintage {{ item.vintage }}</span>
                     }
                     @if (item.winery) {
                       <span class="detail-badge">{{ item.winery }}</span>
@@ -110,13 +109,13 @@ import { environment } from '../../environments/environment';
                 
                 @if (item.aromas) {
                   <div class="catalog-aromas">
-                    <strong>{{ 'catalog.item.aromas' | translate }}:</strong> {{ item.aromas }}
+                    <strong>Aromas:</strong> {{ item.aromas }}
                   </div>
                 }
                 
                 @if (item.elaboration) {
                   <div class="catalog-elaboration">
-                    <strong>{{ 'catalog.item.elaboration' | translate }}:</strong> {{ item.elaboration }}
+                    <strong>Elaboration:</strong> {{ item.elaboration }}
                   </div>
                 }
 
@@ -124,7 +123,7 @@ import { environment } from '../../environments/environment';
                 @if (item.providers.length > 0) {
                   <div class="price-comparison">
                     <div class="price-header">
-                      <span class="price-label">{{ 'catalog.item.providerPrices' | translate }}:</span>
+                      <span class="price-label">Provider Prices:</span>
                       @if (item.min_price_cents && item.max_price_cents) {
                         <span class="price-range">
                           {{ formatPrice(item.min_price_cents) }}
@@ -148,7 +147,7 @@ import { environment } from '../../environments/environment';
                     </div>
                   </div>
                 } @else {
-                  <div class="no-providers">{{ 'catalog.item.noProviders' | translate }}</div>
+                  <div class="no-providers">No providers available</div>
                 }
 
                 <!-- Add to Menu Button -->
@@ -158,14 +157,14 @@ import { environment } from '../../environments/environment';
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M18 6L6 18M6 6l12 12"/>
                       </svg>
-                      {{ removing() ? ('catalog.actions.removing' | translate) : ('catalog.actions.removeFromMenu' | translate) }}
+                      {{ removing() ? 'Removing...' : 'Remove from Menu' }}
                     </button>
                   } @else {
                     <button class="btn btn-primary" (click)="openAddDialog(item)" [disabled]="adding()">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
                       </svg>
-                      {{ 'catalog.actions.addToMenu' | translate }}
+                      Add to Menu
                     </button>
                   }
                 </div>
@@ -174,7 +173,7 @@ import { environment } from '../../environments/environment';
           </div>
         } @else if (!loading() && catalogItems().length === 0) {
           <div class="empty-state">
-            <p>{{ 'catalog.empty' | translate }}</p>
+            <p>No products found. Try adjusting your filters.</p>
           </div>
         }
 
@@ -183,7 +182,7 @@ import { environment } from '../../environments/environment';
           <div class="modal-overlay" (click)="closeAddDialog()">
             <div class="modal-content" (click)="$event.stopPropagation()">
               <div class="modal-header">
-                <h3>{{ 'catalog.addDialog.title' | translate }}</h3>
+                <h3>Add to Menu</h3>
                 <button class="icon-btn" (click)="closeAddDialog()">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M18 6L6 18M6 6l12 12"/>
@@ -192,13 +191,13 @@ import { environment } from '../../environments/environment';
               </div>
               <div class="modal-body">
                 <div class="form-group">
-                  <label>{{ 'catalog.addDialog.productName' | translate }}</label>
-                  <input type="text" [(ngModel)]="addFormData.name" [placeholder]="'catalog.addDialog.productName' | translate">
+                  <label>Product Name</label>
+                  <input type="text" [(ngModel)]="addFormData.name" placeholder="Product name">
                 </div>
                 <div class="form-group">
-                  <label>{{ 'catalog.addDialog.selectProvider' | translate }}</label>
+                  <label>Select Provider</label>
                   <select [(ngModel)]="addFormData.providerProductId">
-                    <option [value]="null">{{ 'catalog.addDialog.noSpecificProvider' | translate }}</option>
+                    <option [value]="null">No specific provider</option>
                     @for (provider of selectedItem()!.providers; track provider.provider_id) {
                       <option [value]="provider.provider_product_id || null">
                         {{ provider.provider_name }}
@@ -210,20 +209,20 @@ import { environment } from '../../environments/environment';
                   </select>
                 </div>
                 <div class="form-group">
-                  <label>{{ 'catalog.addDialog.yourPrice' | translate }}</label>
+                  <label>Your Price</label>
                   <div class="price-input">
                     <span class="currency">{{ currency() }}</span>
                     <input type="number" step="0.01" [(ngModel)]="addFormData.price" placeholder="0.00" required>
                   </div>
                   @if (getSelectedProviderPrice()) {
-                    <small class="hint">{{ 'catalog.addDialog.providerPrice' | translate }}: {{ formatPrice(getSelectedProviderPrice()!) }}</small>
+                    <small class="hint">Provider price: {{ formatPrice(getSelectedProviderPrice()!) }}</small>
                   }
                 </div>
               </div>
               <div class="modal-actions">
-                <button class="btn btn-secondary" (click)="closeAddDialog()">{{ 'common.cancel' | translate }}</button>
+                <button class="btn btn-secondary" (click)="closeAddDialog()">Cancel</button>
                 <button class="btn btn-primary" (click)="addToMenu()" [disabled]="adding()">
-                  {{ adding() ? ('catalog.actions.adding' | translate) : ('catalog.actions.addToMenu' | translate) }}
+                  {{ adding() ? 'Adding...' : 'Add to Menu' }}
                 </button>
               </div>
             </div>
@@ -497,15 +496,15 @@ export class CatalogComponent implements OnInit {
   categories = signal<string[]>([]);
   categoriesMap = signal<Record<string, string[]>>({});
   tenantProducts = signal<TenantProduct[]>([]);
-
+  
   selectedCategory = signal<string>('');
   selectedSubcategory = signal<string>('');
   searchTerm = signal<string>('');
-
+  
   selectedItem = signal<CatalogItem | null>(null);
   adding = signal(false);
   removing = signal(false);
-
+  
   addFormData = {
     name: '',
     providerProductId: null as number | null,
@@ -526,7 +525,7 @@ export class CatalogComponent implements OnInit {
   loadCatalog() {
     this.loading.set(true);
     this.error.set('');
-
+    
     this.apiService.getCatalog(
       this.selectedCategory() || undefined,
       this.selectedSubcategory() || undefined,
@@ -615,8 +614,8 @@ export class CatalogComponent implements OnInit {
   getSelectedProviderPrice(): number | null {
     const item = this.selectedItem();
     if (!item || !this.addFormData.providerProductId) return null;
-
-    const provider = item.providers.find(p =>
+    
+    const provider = item.providers.find(p => 
       p.provider_product_id === this.addFormData.providerProductId
     );
     return provider?.price_cents || null;

@@ -1,21 +1,20 @@
 import { Component, inject, OnInit } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { TranslateModule } from '@ngx-translate/core';
 import { SidebarComponent } from '../shared/sidebar.component';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [SidebarComponent, RouterLink, TranslateModule],
+  imports: [SidebarComponent, RouterLink],
   template: `
     <app-sidebar>
         <div class="page-header">
-          <h1>{{ 'dashboard.title' | translate }}</h1>
+          <h1>Dashboard</h1>
         </div>
 
         <div class="welcome-section">
-          <h2>{{ 'dashboard.welcome' | translate }}</h2>
-          <p class="welcome-text">{{ 'dashboard.welcomeText' | translate }}</p>
+          <h2>Welcome back</h2>
+          <p class="welcome-text">Manage your restaurant from here.</p>
         </div>
 
         <div class="quick-actions">
@@ -25,8 +24,8 @@ import { SidebarComponent } from '../shared/sidebar.component';
                 <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/>
               </svg>
             </div>
-            <span class="action-label">{{ 'dashboard.products' | translate }}</span>
-            <span class="action-desc">{{ 'dashboard.productsDesc' | translate }}</span>
+            <span class="action-label">Products</span>
+            <span class="action-desc">Manage menu items</span>
           </a>
           <a routerLink="/tables" class="action-card">
             <div class="action-icon">
@@ -37,8 +36,8 @@ import { SidebarComponent } from '../shared/sidebar.component';
                 <rect x="3" y="14" width="7" height="7"/>
               </svg>
             </div>
-            <span class="action-label">{{ 'dashboard.tables' | translate }}</span>
-            <span class="action-desc">{{ 'dashboard.tablesDesc' | translate }}</span>
+            <span class="action-label">Tables</span>
+            <span class="action-desc">QR codes for customers</span>
           </a>
           <a routerLink="/orders" class="action-card">
             <div class="action-icon">
@@ -47,8 +46,8 @@ import { SidebarComponent } from '../shared/sidebar.component';
                 <polyline points="14,2 14,8 20,8"/>
               </svg>
             </div>
-            <span class="action-label">{{ 'dashboard.orders' | translate }}</span>
-            <span class="action-desc">{{ 'dashboard.ordersDesc' | translate }}</span>
+            <span class="action-label">Orders</span>
+            <span class="action-desc">View incoming orders</span>
           </a>
         </div>
     </app-sidebar>

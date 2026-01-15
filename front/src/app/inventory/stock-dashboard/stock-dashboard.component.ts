@@ -9,7 +9,6 @@ import { Component, OnInit, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
-import { TranslateModule } from '@ngx-translate/core';
 import { SidebarComponent } from '../../shared/sidebar.component';
 import { InventoryService } from '../inventory.service';
 import { StockLevel, LowStockItem, InventoryCategory } from '../inventory.types';
@@ -17,16 +16,16 @@ import { StockLevel, LowStockItem, InventoryCategory } from '../inventory.types'
 @Component({
   selector: 'app-stock-dashboard',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterModule, SidebarComponent, TranslateModule],
+  imports: [CommonModule, FormsModule, RouterModule, SidebarComponent],
   template: `
     <app-sidebar>
       <div class="page-header">
-        <h1>{{ 'inventory.stock.title' | translate }}</h1>
+        <h1>Stock Dashboard</h1>
         <button class="btn btn-secondary" (click)="loadData()">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="23,4 23,10 17,10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
           </svg>
-          {{ 'common.loading' | translate }}
+          Refresh
         </button>
       </div>
 
@@ -35,15 +34,15 @@ import { StockLevel, LowStockItem, InventoryCategory } from '../inventory.types'
         <div class="stats-row">
           <div class="stat-card">
             <span class="stat-value">{{ totalItems() }}</span>
-            <span class="stat-label">{{ 'inventory.stats.totalItems' | translate }}</span>
+            <span class="stat-label">Total Items</span>
           </div>
           <div class="stat-card stat-warning">
             <span class="stat-value">{{ lowStockCount() }}</span>
-            <span class="stat-label">{{ 'inventory.stock.lowStockAlerts' | translate }}</span>
+            <span class="stat-label">Low Stock Alerts</span>
           </div>
           <div class="stat-card">
             <span class="stat-value">{{ formatCurrency(totalValue()) }}</span>
-            <span class="stat-label">{{ 'inventory.stats.totalValue' | translate }}</span>
+            <span class="stat-label">Total Inventory Value</span>
           </div>
         </div>
 
@@ -51,7 +50,7 @@ import { StockLevel, LowStockItem, InventoryCategory } from '../inventory.types'
         @if (lowStockItems().length > 0) {
           <div class="section">
             <div class="section-header">
-              <h2>{{ 'inventory.stock.lowStockAlerts' | translate }}</h2>
+              <h2>Low Stock Alerts</h2>
               <span class="badge warning">{{ lowStockItems().length }}</span>
             </div>
             <div class="alert-cards">
@@ -63,20 +62,20 @@ import { StockLevel, LowStockItem, InventoryCategory } from '../inventory.types'
                   </div>
                   <div class="alert-details">
                     <div class="alert-stat">
-                      <span class="label">{{ 'inventory.stock.alert.current' | translate }}</span>
+                      <span class="label">Current</span>
                       <span class="value negative">{{ item.current_quantity.toFixed(2) }}</span>
                     </div>
                     <div class="alert-stat">
-                      <span class="label">{{ 'inventory.stock.alert.reorder' | translate }}</span>
+                      <span class="label">Reorder</span>
                       <span class="value">{{ item.reorder_level.toFixed(2) }}</span>
                     </div>
                     <div class="alert-stat">
-                      <span class="label">{{ 'inventory.stock.alert.suggest' | translate }}</span>
+                      <span class="label">Suggest</span>
                       <span class="value primary">{{ item.suggested_order_quantity.toFixed(2) }}</span>
                     </div>
                   </div>
                   <a routerLink="/inventory/purchase-orders" class="btn btn-primary btn-sm">
-                    {{ 'inventory.stock.alert.createPO' | translate }}
+                    Create PO
                   </a>
                 </div>
               }
@@ -87,17 +86,17 @@ import { StockLevel, LowStockItem, InventoryCategory } from '../inventory.types'
         <!-- Stock Levels Table -->
         <div class="section">
           <div class="section-header">
-            <h2>{{ 'inventory.stock.levels' | translate }}</h2>
+            <h2>Stock Levels</h2>
             <select [(ngModel)]="categoryFilter" (change)="applyFilter()">
-              <option value="">{{ 'inventory.filter.allCategories' | translate }}</option>
+              <option value="">All Categories</option>
               @for (cat of categories; track cat) {
-                <option [value]="cat">{{ 'common.categories.' + cat | translate }}</option>
+                <option [value]="cat">{{ formatCategory(cat) }}</option>
               }
             </select>
           </div>
 
           @if (loading()) {
-            <div class="empty-state"><p>{{ 'common.loading' | translate }}</p></div>
+            <div class="empty-state"><p>Loading stock levels...</p></div>
           } @else if (filteredStockLevels().length === 0) {
             <div class="empty-state">
               <div class="empty-icon">
@@ -105,22 +104,22 @@ import { StockLevel, LowStockItem, InventoryCategory } from '../inventory.types'
                   <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
                 </svg>
               </div>
-              <h3>{{ 'inventory.stock.noItems' | translate }}</h3>
-              <p>{{ 'inventory.stock.noItemsSubtitle' | translate }}</p>
-              <a routerLink="/inventory/items" class="btn btn-primary">{{ 'inventory.stock.goToItems' | translate }}</a>
+              <h3>No inventory items</h3>
+              <p>Add items from the inventory page</p>
+              <a routerLink="/inventory/items" class="btn btn-primary">Go to Items</a>
             </div>
           } @else {
             <div class="table-card">
               <table>
                 <thead>
                   <tr>
-                    <th>{{ 'inventory.stock.table.sku' | translate }}</th>
-                    <th>{{ 'inventory.stock.table.name' | translate }}</th>
-                    <th>{{ 'inventory.stock.table.category' | translate }}</th>
-                    <th>{{ 'inventory.stock.table.currentStock' | translate }}</th>
-                    <th>{{ 'inventory.stock.table.reorderLevel' | translate }}</th>
-                    <th>{{ 'inventory.stock.table.value' | translate }}</th>
-                    <th>{{ 'inventory.stock.table.status' | translate }}</th>
+                    <th>SKU</th>
+                    <th>Name</th>
+                    <th>Category</th>
+                    <th>Current Stock</th>
+                    <th>Reorder Level</th>
+                    <th>Value</th>
+                    <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -128,17 +127,17 @@ import { StockLevel, LowStockItem, InventoryCategory } from '../inventory.types'
                     <tr [class.low-stock-row]="item.is_low_stock">
                       <td class="sku-cell">{{ item.sku }}</td>
                       <td>{{ item.name }}</td>
-                      <td>{{ 'common.categories.' + item.category | translate }}</td>
+                      <td>{{ formatCategory(item.category) }}</td>
                       <td [class.negative]="item.current_quantity < 0">
-                        {{ item.current_quantity.toFixed(2) }} {{ 'common.units.' + item.unit | translate }}
+                        {{ item.current_quantity.toFixed(2) }} {{ item.unit }}
                       </td>
                       <td>{{ item.reorder_level.toFixed(2) }}</td>
                       <td>{{ formatCurrency(item.total_value_cents) }}</td>
                       <td>
                         @if (item.is_low_stock) {
-                          <span class="status-badge warning">{{ 'inventory.status.lowStock' | translate }}</span>
+                          <span class="status-badge warning">Low</span>
                         } @else {
-                          <span class="status-badge success">{{ 'inventory.status.ok' | translate }}</span>
+                          <span class="status-badge success">OK</span>
                         }
                       </td>
                     </tr>
@@ -151,7 +150,6 @@ import { StockLevel, LowStockItem, InventoryCategory } from '../inventory.types'
       </div>
     </app-sidebar>
   `,
-
   styles: [`
     .page-header {
       display: flex;

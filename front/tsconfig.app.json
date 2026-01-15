@@ -5,8 +5,7 @@
   "compilerOptions": {
     "outDir": "./out-tsc/app",
     "types": [
-      "node",
-      "@angular/localize"
+      "node"
     ]
   },
   "include": [

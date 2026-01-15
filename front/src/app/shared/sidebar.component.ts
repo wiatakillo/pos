@@ -1,13 +1,12 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive } from '@angular/router';
-import { TranslateModule } from '@ngx-translate/core';
 import { ApiService, User } from '../services/api.service';
 import { environment } from '../../environments/environment';
 
 @Component({
   selector: 'app-sidebar',
   standalone: true,
-  imports: [RouterLink, RouterLinkActive, TranslateModule],
+  imports: [RouterLink, RouterLinkActive],
   template: `
     <div class="layout" [class.sidebar-open]="sidebarOpen()">
       <header class="mobile-header">
@@ -38,20 +37,20 @@ import { environment } from '../../environments/environment';
               <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
               <polyline points="9,22 9,12 15,12 15,22"/>
             </svg>
-            <span>{{ 'sidebar.home' | translate }}</span>
+            <span>Home</span>
           </a>
           <a routerLink="/products" routerLinkActive="active" class="nav-link" (click)="closeSidebar()">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/>
             </svg>
-            <span>{{ 'sidebar.products' | translate }}</span>
+            <span>Products</span>
           </a>
           <a routerLink="/catalog" routerLinkActive="active" class="nav-link" (click)="closeSidebar()">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M4 19.5A2.5 2.5 0 016.5 17H20"/>
               <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/>
             </svg>
-            <span>{{ 'sidebar.catalog' | translate }}</span>
+            <span>Catalog</span>
           </a>
           <a routerLink="/tables" routerLinkActive="active" class="nav-link" (click)="closeSidebar()">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -60,7 +59,7 @@ import { environment } from '../../environments/environment';
               <rect x="14" y="14" width="7" height="7"/>
               <rect x="3" y="14" width="7" height="7"/>
             </svg>
-            <span>{{ 'sidebar.tables' | translate }}</span>
+            <span>Tables</span>
           </a>
           <a routerLink="/orders" routerLinkActive="active" class="nav-link" (click)="closeSidebar()">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -70,7 +69,7 @@ import { environment } from '../../environments/environment';
               <line x1="16" y1="17" x2="8" y2="17"/>
               <polyline points="10,9 9,9 8,9"/>
             </svg>
-            <span>{{ 'sidebar.orders' | translate }}</span>
+            <span>Orders</span>
           </a>
           <!-- Inventory Module -->
           <div class="nav-section">
@@ -78,7 +77,7 @@ import { environment } from '../../environments/environment';
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
               </svg>
-              <span>{{ 'sidebar.inventory' | translate }}</span>
+              <span>Inventory</span>
               <svg class="chevron" [class.open]="inventoryOpen()" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="6 9 12 15 18 9"/>
               </svg>
@@ -86,19 +85,19 @@ import { environment } from '../../environments/environment';
             @if (inventoryOpen()) {
               <div class="nav-submenu">
                 <a routerLink="/inventory/items" routerLinkActive="active" class="nav-sublink" (click)="closeSidebar()">
-                  <span>{{ 'sidebar.items' | translate }}</span>
+                  <span>Items</span>
                 </a>
                 <a routerLink="/inventory/suppliers" routerLinkActive="active" class="nav-sublink" (click)="closeSidebar()">
-                  <span>{{ 'sidebar.suppliers' | translate }}</span>
+                  <span>Suppliers</span>
                 </a>
                 <a routerLink="/inventory/purchase-orders" routerLinkActive="active" class="nav-sublink" (click)="closeSidebar()">
-                  <span>{{ 'sidebar.purchaseOrders' | translate }}</span>
+                  <span>Purchase Orders</span>
                 </a>
                 <a routerLink="/inventory/stock" routerLinkActive="active" class="nav-sublink" (click)="closeSidebar()">
-                  <span>{{ 'sidebar.stockDashboard' | translate }}</span>
+                  <span>Stock Dashboard</span>
                 </a>
                 <a routerLink="/inventory/reports" routerLinkActive="active" class="nav-sublink" (click)="closeSidebar()">
-                  <span>{{ 'sidebar.reports' | translate }}</span>
+                  <span>Reports</span>
                 </a>
               </div>
             }
@@ -109,7 +108,7 @@ import { environment } from '../../environments/environment';
               <circle cx="12" cy="12" r="3"/>
               <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"/>
             </svg>
-            <span>{{ 'sidebar.settings' | translate }}</span>
+            <span>Settings</span>
           </a>
         </nav>
 
@@ -125,7 +124,7 @@ import { environment } from '../../environments/environment';
               <polyline points="16,17 21,12 16,7"/>
               <line x1="21" y1="12" x2="9" y2="12"/>
             </svg>
-            <span>{{ 'sidebar.signOut' | translate }}</span>
+            <span>Sign out</span>
           </button>
         </div>
       </aside>

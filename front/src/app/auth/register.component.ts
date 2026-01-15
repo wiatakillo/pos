@@ -1,24 +1,23 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { TranslateModule } from '@ngx-translate/core';
 import { ApiService } from '../services/api.service';
 
 @Component({
   selector: 'app-register',
   standalone: true,
-  imports: [ReactiveFormsModule, RouterLink, TranslateModule],
+  imports: [ReactiveFormsModule, RouterLink],
   template: `
     <div class="auth-page">
       <div class="auth-card">
         <div class="auth-header">
-          <h1>{{ 'auth.register.title' | translate }}</h1>
-          <p>{{ 'auth.register.subtitle' | translate }}</p>
+          <h1>Create account</h1>
+          <p>Set up your organization</p>
         </div>
 
         <form [formGroup]="form" (ngSubmit)="onSubmit()">
           <div class="form-group">
-            <label for="tenant">{{ 'auth.register.orgName' | translate }}</label>
+            <label for="tenant">Organization Name</label>
             <input 
               id="tenant" 
               type="text" 
@@ -28,7 +27,7 @@ import { ApiService } from '../services/api.service';
           </div>
           
           <div class="form-group">
-            <label for="name">{{ 'auth.register.fullName' | translate }}</label>
+            <label for="name">Full Name</label>
             <input 
               id="name" 
               type="text" 
@@ -38,7 +37,7 @@ import { ApiService } from '../services/api.service';
           </div>
 
           <div class="form-group">
-            <label for="email">{{ 'common.email' | translate }}</label>
+            <label for="email">Email</label>
             <input 
               id="email" 
               type="email" 
@@ -49,7 +48,7 @@ import { ApiService } from '../services/api.service';
           </div>
 
           <div class="form-group">
-            <label for="password">{{ 'common.password' | translate }}</label>
+            <label for="password">Password</label>
             <input 
               id="password" 
               type="password" 
@@ -68,17 +67,13 @@ import { ApiService } from '../services/api.service';
           }
 
           <button type="submit" class="btn-submit" [disabled]="form.invalid || loading()">
-            @if (loading()) {
-              <span>{{ 'auth.register.creating' | translate }}</span>
-            } @else {
-              <span>{{ 'auth.register.create' | translate }}</span>
-            }
+            {{ loading() ? 'Creating account...' : 'Create account' }}
           </button>
         </form>
 
         <div class="auth-footer">
-          <span>{{ 'auth.register.hasAccount' | translate }}</span>
-          <a routerLink="/login">{{ 'auth.register.signIn' | translate }}</a>
+          <span>Already have an account?</span>
+          <a routerLink="/login">Sign in</a>
         </div>
       </div>
     </div>

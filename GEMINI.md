@@ -1,138 +1,87 @@
 # Gemini Context: POS System
 
 ## Project Overview
-This is a modern, full-stack Point of Sale (POS) system designed for scalability and ease of use. It features a microservice architecture for real-time updates and follows strict separation of concerns.
+This is a full-stack Point of Sale (POS) system.
+- **Frontend:** Angular 20+ (SPA with SSR capability, though SSR is disabled in dev script).
+- **Backend:** FastAPI (Python) using SQLModel for ORM.
+- **Database:** PostgreSQL 18 (Alpine 3.23), managed via Docker Compose.
 
-## Tech Stack & Versions
-
-### Backend (`/back`)
-- **Language:** Python 3.12 (Slim Docker Image)
-- **Framework:** FastAPI >= 0.110
-- **Server:** Uvicorn [standard] >= 0.27
-- **ORM:** SQLModel >= 0.0.22 (Pydantic + SQLAlchemy)
-- **Database Driver:** Psycopg 3.1 (Binary)
-- **Authentication:** OAuth2 with Password Flow (Bcrypt, JWT)
-- **Payment Processing:** Stripe >= 8.0
-- **Image Processing:** Pillow >= 10.0.0
-- **Key Libraries:** `python-multipart`, `python-jose`, `redis`
-
-### Frontend (`/front`)
-- **Framework:** Angular 21
-- **Runtime:** Node.js 20 (Alpine)
-- **UI Grid:** Ag-Grid Community 35
-- **Styling:** SCSS, Prettier (Single Quote, Print Width 100)
-- **Server-Side Rendering (SSR):** Enabled in production, disabled in dev for speed (`angular-ssr`, `express`).
-- **Key Libraries:** `angularx-qrcode`, `rxjs`, `zone.js`
-
-### Database & Storage
-- **Primary DB:** PostgreSQL 18 (Alpine 3.23)
-- **Cache/PubSub:** Redis 7 (Alpine)
-
-### Microservices
-- **WS Bridge (`/ws-bridge`):** 
-  - Python/FastAPI WebSocket service.
-  - Subscribes to Redis channels (`orders:{tenant_id}`) to broadcast real-time updates to frontend clients.
-
-## Architecture & Infrastructure
-
-### Service Map
-| Service | Internal Port | Host Port | Description |
-| :--- | :--- | :--- | :--- |
-| **back** | 8020 | 8020 | Main REST API (FastAPI) |
-| **front** | 4200 | 4200 | Angular Client (Dev: `ng serve`, Prod: Nginx/Node) |
-| **db** | 5432 | 5433 | PostgreSQL Database |
-| **redis** | 6379 | 6379 | Redis Cache & Message Broker |
-| **ws-bridge** | 8021 | 8021 | WebSocket Real-time Bridge |
-
-### Directory Structure
+## Architecture & Directory Structure
 ```
 /
-├── back/                   # FastAPI Backend
-│   ├── app/                # Application Source
-│   │   ├── main.py         # Entry Point
-│   │   ├── models.py       # SQLModel Definitions
-│   │   ├── db.py           # Database Connection
-│   │   └── ...
-│   ├── migrations/         # SQL Migration Files (Timestamped)
-│   ├── uploads/            # User Uploaded Content
-│   └── create_migration.sh # Helper script for migrations
-├── front/                  # Angular Frontend
-│   ├── src/                # Source Code
-│   └── ...
-├── ws-bridge/              # WebSocket Microservice
-│   ├── main.py
-│   └── ...
-├── run.sh                  # Main Orchestration Script
-├── config.env              # Environment Variables (Git-ignored)
-├── docker-compose.yml      # Base Compose Config (Dev)
-└── docker-compose.prod.yml # Production Overrides
+├── back/               # Python FastAPI Backend
+│   ├── app/            # Application source
+│   │   ├── main.py     # App entry point
+│   │   ├── models.py   # SQLModel database models
+│   │   └── db.py       # Database connection logic
+│   └── requirements.txt
+├── front/              # Angular Frontend
+│   ├── src/            # Source code
+│   └── package.json    # Angular 20 dependencies & scripts
+├── docker-compose.yml  # Database service configuration
+└── run.sh              # Main development entry script
 ```
 
-## Development Workflow
+## Setup & Development
 
-### Startup & Management (`run.sh`)
-The `run.sh` script is the central controller for the environment.
+### Prerequisites
+- Docker & Docker Compose
+- Python 3.12+ (Virtual environment recommended)
+- Node.js 18+
 
-*   **Development Mode (Hot Reload):**
+### Quick Start
+The project includes a helper script `run.sh` that orchestrates the entire stack.
+
+1.  **Configure Environment:**
     ```bash
-    ./run.sh -dev
+    cp config.env.example config.env
     ```
-    - `front`: Runs `ng serve` (host 0.0.0.0).
-    - `back`: Runs `uvicorn --reload`.
-    - `ws-bridge`: Runs standard startup.
-    
-*   **Production Mode:**
+2.  **Start Application:**
     ```bash
     ./run.sh
     ```
-    - `front`: Builds and serves static/SSR.
-    - `back`: Standard execution.
-    
-*   **Cleanup:**
+    *   Starts PostgreSQL container.
+    *   Temporarily disables Angular SSR files for faster client-side dev.
+    *   Starts `ng serve` on port 4200.
+    *   Starts `uvicorn` backend on port 8020.
+    *   **Note:** The script handles cleanup (restoring SSR files) on exit.
+
+### Manual Commands
+If `run.sh` is not used, services can be run individually:
+
+*   **Database:** `docker compose --env-file config.env up -d`
+*   **Backend:**
     ```bash
-    ./run.sh --clean
+    cd back
+    source venv/bin/activate
+    export $(grep -v '^#' ../config.env | xargs)
+    uvicorn app.main:app --host 0.0.0.0 --port 8020 --reload
     ```
-    - Stops containers, removes volumes, cleans up orphaned resources.
-
-### Database Migrations
-Migrations are raw SQL files located in `back/migrations/`. They are applied automatically on backend startup (`app.migrate`).
-
-*   **Format:** `{YYYYMMDDHHMMSS}_{description}.sql` (Timestamp-based to prevent conflicts).
-*   **Create Migration:**
+*   **Frontend:**
     ```bash
-    ./back/create_migration.sh <description_snake_case>
+    cd front
+    npm install
+    npm start # Runs 'ng serve'
     ```
-    *Example:* `./back/create_migration.sh add_user_preferences`
 
-### Configuration
-Configuration is loaded from environment variables.
-*   **Source:** `config.env` (copy from `config.env.example`).
-*   **Backend Access:** via `pydantic-settings` or `os.getenv`.
-*   **Frontend Access:** Build-time injection or `environment.ts` files.
-
-### Key Environment Variables
-| Variable | Default | Purpose |
-| :--- | :--- | :--- |
-| `POSTGRES_DB` | pos | Database Name |
-| `API_URL` | http://localhost:8020 | Backend API URL for Front |
-| `WS_URL` | ws://localhost:8021 | WebSocket URL for Front |
-| `STRIPE_PUBLISHABLE_KEY` | - | Stripe Key for Front |
-| `STRIPE_SECRET_KEY` | - | Stripe Key for Back |
-
-## Code Conventions
+## Development Conventions
 
 ### Frontend (Angular)
--   **Style:** Strict Prettier enforcement (`singleQuote: true`, `printWidth: 100`).
--   **Structure:** Feature-based modules (though migrating to standalone components where appropriate).
--   **State:** Service-based state management with RxJS.
+-   **Style:** Prettier configuration is embedded in `package.json` (`singleQuote: true`, `printWidth: 100`).
+-   **SSR:** The project uses `@angular/ssr`, but development is typically done in client-side mode (handled by `run.sh`).
+-   **Structure:** Standard Angular CLI structure.
 
-### Backend (Python)
--   **Style:** PEP 8 compliance.
--   **Models:** All database models in `back/app/models.py`.
--   **Imports:** Explicit imports in `back/app/main.py` to ensure SQLModel registry is populated.
+### Backend (FastAPI)
+-   **ORM:** Uses **SQLModel** (combining Pydantic & SQLAlchemy).
+-   **DB Driver:** Uses `psycopg[binary]` (v3).
+-   **Imports:** `from . import models` in `main.py` ensures models are registered with SQLModel before DB creation.
+-   **Environment:** Relies on environment variables (loaded from `config.env`).
 
-## Common Commands
-*   **Backend Logs:** `docker compose logs -f back`
-*   **Frontend Logs:** `docker compose logs -f front`
-*   **Manual DB Connect:** `docker compose exec db psql -U pos -d pos`
-*   **Restart Backend Only:** `docker compose restart back`
+### Testing
+-   **Frontend:** `ng test` (Karma/Jasmine).
+-   **Backend:** Standard `pytest` conventions likely apply, though explicit test files were not immediately visible in the root scan.
+
+## Key URLs
+-   Frontend: http://localhost:4200
+-   Backend API Docs: http://localhost:8020/docs
+-   Health Check: http://localhost:8020/health

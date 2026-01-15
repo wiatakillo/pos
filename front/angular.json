@@ -13,22 +13,13 @@
       "root": "",
       "sourceRoot": "src",
       "prefix": "app",
-      "i18n": {
-        "sourceLocale": "en",
-        "locales": {
-          "es": {
-            "translation": "src/locale/messages.es.xlf"
-          }
-        }
-      },
       "architect": {
         "build": {
           "builder": "@angular/build:application",
           "options": {
             "browser": "src/main.ts",
             "polyfills": [
-              "zone.js",
-              "@angular/localize/init"
+              "zone.js"
             ],
             "tsConfig": "tsconfig.app.json",
             "inlineStyleLanguage": "scss",
@@ -36,11 +27,6 @@
               {
                 "glob": "**/*",
                 "input": "public"
-              },
-              {
-                "glob": "**/*",
-                "input": "src/assets",
-                "output": "/assets"
               }
             ],
             "styles": [
@@ -72,14 +58,6 @@
               "optimization": false,
               "extractLicenses": false,
               "sourceMap": true
-            },
-            "development-es": {
-              "optimization": false,
-              "extractLicenses": false,
-              "sourceMap": true,
-              "localize": [
-                "es"
-              ]
             },
             "development-no-ssr": {
               "optimization": false,
@@ -123,9 +101,6 @@
             },
             "development-no-ssr": {
               "buildTarget": "front:build:development-no-ssr"
-            },
-            "es": {
-              "buildTarget": "front:build:development-es"
             }
           },
           "defaultConfiguration": "development"
@@ -138,8 +113,7 @@
           "options": {
             "polyfills": [
               "zone.js",
-              "zone.js/testing",
-              "@angular/localize/init"
+              "zone.js/testing"
             ],
             "tsConfig": "tsconfig.spec.json",
             "inlineStyleLanguage": "scss",

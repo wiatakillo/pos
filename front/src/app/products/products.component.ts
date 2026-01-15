@@ -1,7 +1,6 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { TranslateModule } from '@ngx-translate/core';
 import { ApiService, Product } from '../services/api.service';
 import { SidebarComponent } from '../shared/sidebar.component';
 import { CommonModule } from '@angular/common';
@@ -9,17 +8,17 @@ import { CommonModule } from '@angular/common';
 @Component({
   selector: 'app-products',
   standalone: true,
-  imports: [FormsModule, SidebarComponent, CommonModule, TranslateModule],
+  imports: [FormsModule, SidebarComponent, CommonModule],
   template: `
     <app-sidebar>
         <div class="page-header">
-          <h1>{{ 'products.title' | translate }}</h1>
+          <h1>Products</h1>
           @if (!showAddForm() && !editingProduct()) {
             <button class="btn btn-primary" (click)="showAddForm.set(true)">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
               </svg>
-              {{ 'products.addProduct' | translate }}
+              Add Product
             </button>
           }
         </div>
@@ -28,7 +27,7 @@ import { CommonModule } from '@angular/common';
           @if (showAddForm() || editingProduct()) {
             <div class="form-card">
               <div class="form-header">
-                <h3>{{ editingProduct() ? ('products.editProduct' | translate) : ('products.newProduct' | translate) }}</h3>
+                <h3>{{ editingProduct() ? 'Edit Product' : 'New Product' }}</h3>
                 <button class="icon-btn" (click)="cancelForm()">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M18 6L6 18M6 6l12 12"/>
@@ -38,11 +37,11 @@ import { CommonModule } from '@angular/common';
               <form (submit)="saveProduct($event)">
                 <div class="form-row">
                   <div class="form-group">
-                    <label for="name">{{ 'products.form.name' | translate }}</label>
-                    <input id="name" type="text" [(ngModel)]="formData.name" name="name" required [placeholder]="'products.form.namePlaceholder' | translate">
+                    <label for="name">Product Name</label>
+                    <input id="name" type="text" [(ngModel)]="formData.name" name="name" required placeholder="e.g. Margherita Pizza">
                   </div>
                   <div class="form-group form-group-sm">
-                    <label for="price">{{ 'products.form.price' | translate }}</label>
+                    <label for="price">Price</label>
                     <div class="price-input">
                       <span class="currency">{{ currency() }}</span>
                       <input id="price" type="number" step="0.01" [(ngModel)]="formData.price" name="price" required placeholder="0.00">
@@ -50,23 +49,23 @@ import { CommonModule } from '@angular/common';
                   </div>
                 </div>
                 <div class="form-group">
-                  <label for="ingredients">{{ 'products.form.ingredients' | translate }}</label>
-                  <input id="ingredients" type="text" [(ngModel)]="formData.ingredients" name="ingredients" [placeholder]="'products.form.ingredientsPlaceholder' | translate">
+                  <label for="ingredients">Ingredients (comma-separated)</label>
+                  <input id="ingredients" type="text" [(ngModel)]="formData.ingredients" name="ingredients" placeholder="e.g. Tomato, Mozzarella, Basil">
                 </div>
                 <div class="form-row">
                   <div class="form-group">
-                    <label for="category">{{ 'products.form.category' | translate }}</label>
+                    <label for="category">Category</label>
                     <select id="category" [(ngModel)]="formData.category" name="category" (change)="onCategoryChange()">
-                      <option value="">{{ 'products.form.categoryPlaceholder' | translate }}</option>
+                      <option value="">Select Category</option>
                       @for (category of getCategoryKeys(); track category) {
                         <option [value]="category">{{ category }}</option>
                       }
                     </select>
                   </div>
                   <div class="form-group">
-                    <label for="subcategory">{{ 'products.form.subcategory' | translate }}</label>
+                    <label for="subcategory">Subcategory</label>
                     <select id="subcategory" [(ngModel)]="formData.subcategory" name="subcategory" [disabled]="!formData.category || availableSubcategories().length === 0">
-                      <option value="">{{ 'products.form.subcategoryPlaceholder' | translate }}</option>
+                      <option value="">Select Subcategory</option>
                       @for (subcat of availableSubcategories(); track subcat) {
                         <option [value]="subcat">{{ subcat }}</option>
                       }
@@ -74,7 +73,7 @@ import { CommonModule } from '@angular/common';
                   </div>
                 </div>
                 <div class="form-group">
-                  <label>{{ 'products.form.image' | translate }}</label>
+                  <label>Product Image</label>
                   <div class="image-upload-row">
                     @if (editingProduct()?.image_filename) {
                       <div class="image-preview-wrapper">
@@ -93,7 +92,7 @@ import { CommonModule } from '@angular/common';
                     }
                     <input type="file" #fileInput accept="image/jpeg,image/png,image/webp" (change)="handleImageSelect($event)" style="display:none">
                     <button type="button" class="btn btn-secondary" (click)="fileInput.click()" [disabled]="uploading()">
-                      {{ uploading() ? ('common.loading' | translate) : (pendingImageFile() ? ('products.form.changeImage' | translate) : ('products.form.uploadImage' | translate)) }}
+                      {{ uploading() ? 'Uploading...' : (pendingImageFile() ? 'Change Image' : 'Upload Image') }}
                     </button>
                     @if (pendingImageFile()) {
                       <span class="pending-file-name">{{ pendingImageFile()?.name }}</span>
@@ -101,9 +100,9 @@ import { CommonModule } from '@angular/common';
                   </div>
                 </div>
                 <div class="form-actions">
-                  <button type="button" class="btn btn-secondary" (click)="cancelForm()">{{ 'common.cancel' | translate }}</button>
+                  <button type="button" class="btn btn-secondary" (click)="cancelForm()">Cancel</button>
                   <button type="submit" class="btn btn-primary" [disabled]="saving()">
-                    {{ saving() ? ('common.loading' | translate) : (editingProduct() ? ('common.save' | translate) : ('products.addProduct' | translate)) }}
+                    {{ saving() ? 'Saving...' : (editingProduct() ? 'Update' : 'Add Product') }}
                   </button>
                 </div>
               </form>
@@ -123,7 +122,7 @@ import { CommonModule } from '@angular/common';
 
           @if (loading()) {
             <div class="empty-state">
-              <p>{{ 'common.loading' | translate }}</p>
+              <p>Loading products...</p>
             </div>
           } @else if (products().length === 0) {
             <div class="empty-state">
@@ -132,9 +131,9 @@ import { CommonModule } from '@angular/common';
                   <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/>
                 </svg>
               </div>
-              <h3>{{ 'products.noProducts' | translate }}</h3>
-              <p>{{ 'products.noProductsHint' | translate }}</p>
-              <button class="btn btn-primary" (click)="showAddForm.set(true)">{{ 'products.addProduct' | translate }}</button>
+              <h3>No products yet</h3>
+              <p>Add your first product to get started</p>
+              <button class="btn btn-primary" (click)="showAddForm.set(true)">Add Product</button>
             </div>
           } @else if (filteredProducts().length === 0) {
             <div class="empty-state">
@@ -143,9 +142,9 @@ import { CommonModule } from '@angular/common';
                   <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/>
                 </svg>
               </div>
-              <h3>{{ 'common.noResults' | translate }}</h3>
-              <p>{{ 'products.noProductsHint' | translate }}</p>
-              <button class="btn btn-secondary" (click)="selectCategory(null)">{{ 'common.clear' | translate }}</button>
+              <h3>No products match the selected filters</h3>
+              <p>Try selecting a different category or subcategory</p>
+              <button class="btn btn-secondary" (click)="selectCategory(null)">Clear Filters</button>
             </div>
           } @else {
             <!-- Filter Buttons -->
@@ -157,7 +156,7 @@ import { CommonModule } from '@angular/common';
                     class="filter-btn" 
                     [class.active]="selectedCategory() === null"
                     (click)="selectCategory(null)">
-                    {{ 'products.allCategories' | translate }}
+                    All Categories
                   </button>
                   @for (category of availableCategories(); track category) {
                     <button 
@@ -177,7 +176,7 @@ import { CommonModule } from '@angular/common';
                     class="filter-btn filter-btn-sub" 
                     [class.active]="selectedSubcategory() === null"
                     (click)="selectSubcategory(null)">
-                    {{ 'products.allSubcategories' | translate }}
+                    All {{ selectedCategory() }}
                   </button>
                   @for (subcategory of availableSubcategoriesForFilter(); track subcategory) {
                     <button 
@@ -196,10 +195,10 @@ import { CommonModule } from '@angular/common';
                 <thead>
                   <tr>
                     <th style="width:60px"></th>
-                    <th>{{ 'common.name' | translate }}</th>
-                    <th>{{ 'products.form.category' | translate }}</th>
-                    <th>{{ 'products.form.subcategory' | translate }}</th>
-                    <th>{{ 'common.price' | translate }}</th>
+                    <th>Name</th>
+                    <th>Category</th>
+                    <th>Subcategory</th>
+                    <th>Price</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -233,7 +232,7 @@ import { CommonModule } from '@angular/common';
                             (blur)="saveCategoryInline(product)"
                             (keydown.escape)="cancelCategoryEdit()"
                             [attr.data-product-id]="product.id">
-                            <option value="">{{ 'common.none' | translate }}</option>
+                            <option value="">None</option>
                             @for (category of getCategoryKeys(); track category) {
                               <option [value]="category">{{ category }}</option>
                             }
@@ -252,7 +251,7 @@ import { CommonModule } from '@angular/common';
                             [disabled]="!editingCategory || getSubcategoriesForCategory(editingCategory || '').length === 0"
                             (blur)="saveCategoryInline(product)"
                             (keydown.escape)="cancelCategoryEdit()">
-                            <option value="">{{ 'common.none' | translate }}</option>
+                            <option value="">None</option>
                             @for (subcat of getSubcategoriesForCategory(editingCategory); track subcat) {
                               <option [value]="subcat">{{ subcat }}</option>
                             }
@@ -265,13 +264,13 @@ import { CommonModule } from '@angular/common';
                       </td>
                       <td class="price">{{ formatPrice(product.price_cents) }}</td>
                       <td class="actions">
-                        <button class="icon-btn" (click)="startEdit(product)" [title]="'common.edit' | translate">
+                        <button class="icon-btn" (click)="startEdit(product)" title="Edit">
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
                             <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
                           </svg>
                         </button>
-                        <button class="icon-btn icon-btn-danger" (click)="confirmDelete(product)" [title]="'common.delete' | translate" [disabled]="deleting() === product.id">
+                        <button class="icon-btn icon-btn-danger" (click)="confirmDelete(product)" title="Delete" [disabled]="deleting() === product.id">
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polyline points="3,6 5,6 21,6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
                           </svg>
@@ -287,11 +286,11 @@ import { CommonModule } from '@angular/common';
           @if (productToDelete()) {
             <div class="modal-overlay" (click)="productToDelete.set(null)">
               <div class="modal" (click)="$event.stopPropagation()">
-                <h3>{{ 'common.delete' | translate }}</h3>
-                <p>{{ 'products.confirmDelete' | translate }}</p>
+                <h3>Delete Product</h3>
+                <p>Are you sure you want to delete "{{ productToDelete()?.name }}"?</p>
                 <div class="modal-actions">
-                  <button class="btn btn-secondary" (click)="productToDelete.set(null)">{{ 'common.cancel' | translate }}</button>
-                  <button class="btn btn-danger" (click)="deleteProduct()">{{ 'common.delete' | translate }}</button>
+                  <button class="btn btn-secondary" (click)="productToDelete.set(null)">Cancel</button>
+                  <button class="btn btn-danger" (click)="deleteProduct()">Delete</button>
                 </div>
               </div>
             </div>
@@ -790,10 +789,10 @@ export class ProductsComponent implements OnInit {
 
   saveCategoryInline(product: Product) {
     if (!product.id || this.editingCategoryProductId() !== product.id) return;
-
+    
     const category = this.editingCategory || undefined;
     const subcategory = this.editingSubcategory || undefined;
-
+    
     // Only update if changed
     if (category === product.category && subcategory === product.subcategory) {
       this.cancelCategoryEdit();
@@ -802,14 +801,14 @@ export class ProductsComponent implements OnInit {
 
     this.saving.set(true);
     this.api.updateProduct(product.id, { category, subcategory }).subscribe({
-      next: (updated) => {
-        this.products.update(list => list.map(p => p.id === updated.id ? updated : p));
-        this.updateAvailableCategories();
-        this.updateAvailableSubcategories(this.selectedCategory());
-        this.applyFilters();
-        this.cancelCategoryEdit();
-        this.saving.set(false);
-      },
+        next: (updated) => {
+          this.products.update(list => list.map(p => p.id === updated.id ? updated : p));
+          this.updateAvailableCategories();
+          this.updateAvailableSubcategories(this.selectedCategory());
+          this.applyFilters();
+          this.cancelCategoryEdit();
+          this.saving.set(false);
+        },
       error: (err) => {
         this.error.set(err.error?.detail || 'Failed to update category');
         this.cancelCategoryEdit();
@@ -838,7 +837,7 @@ export class ProductsComponent implements OnInit {
   loadProducts() {
     this.loading.set(true);
     this.api.getProducts().subscribe({
-      next: (products) => {
+      next: (products) => { 
         this.products.set(products);
         this.updateAvailableCategories();
         this.applyFilters();
@@ -891,17 +890,17 @@ export class ProductsComponent implements OnInit {
 
   applyFilters() {
     let filtered = this.products();
-
+    
     // Filter by category
     if (this.selectedCategory()) {
       filtered = filtered.filter(p => p.category === this.selectedCategory());
     }
-
+    
     // Filter by subcategory
     if (this.selectedSubcategory()) {
       filtered = filtered.filter(p => p.subcategory === this.selectedSubcategory());
     }
-
+    
     this.filteredProducts.set(filtered);
   }
 
@@ -911,9 +910,9 @@ export class ProductsComponent implements OnInit {
       this.cancelCategoryEdit();
     }
     this.editingProduct.set(product);
-    this.formData = {
-      name: product.name,
-      price: product.price_cents / 100,
+    this.formData = { 
+      name: product.name, 
+      price: product.price_cents / 100, 
       ingredients: product.ingredients || '',
       category: product.category || '',
       subcategory: product.subcategory || ''
@@ -943,9 +942,9 @@ export class ProductsComponent implements OnInit {
     if (!this.formData.name || this.formData.price <= 0) return;
 
     this.saving.set(true);
-    const productData = {
-      name: this.formData.name,
-      price_cents: Math.round(this.formData.price * 100),
+    const productData = { 
+      name: this.formData.name, 
+      price_cents: Math.round(this.formData.price * 100), 
       ingredients: this.formData.ingredients || undefined,
       category: this.formData.category || undefined,
       subcategory: this.formData.subcategory || undefined
@@ -954,12 +953,12 @@ export class ProductsComponent implements OnInit {
     const editing = this.editingProduct();
     if (editing?.id) {
       this.api.updateProduct(editing.id, productData).subscribe({
-        next: (updated) => {
+        next: (updated) => { 
           this.products.update(list => list.map(p => p.id === updated.id ? updated : p));
           this.updateAvailableCategories();
           this.applyFilters();
-          this.cancelForm();
-          this.saving.set(false);
+          this.cancelForm(); 
+          this.saving.set(false); 
         },
         error: (err) => { this.error.set(err.error?.detail || 'Failed to update'); this.saving.set(false); }
       });
@@ -1004,11 +1003,11 @@ export class ProductsComponent implements OnInit {
     this.deleting.set(product.id);
     this.productToDelete.set(null);
     this.api.deleteProduct(product.id).subscribe({
-      next: () => {
+      next: () => { 
         this.products.update(list => list.filter(p => p.id !== product.id));
         this.updateAvailableCategories();
         this.applyFilters();
-        this.deleting.set(null);
+        this.deleting.set(null); 
       },
       error: (err) => { this.error.set(err.error?.detail || 'Failed to delete'); this.deleting.set(null); }
     });

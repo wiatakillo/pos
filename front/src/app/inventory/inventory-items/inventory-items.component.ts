@@ -9,7 +9,6 @@ import { Component, OnInit, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { RouterModule } from '@angular/router';
-import { TranslateModule, TranslateService } from '@ngx-translate/core';
 import { SidebarComponent } from '../../shared/sidebar.component';
 import { InventoryService } from '../inventory.service';
 import {
@@ -25,17 +24,17 @@ import {
 @Component({
   selector: 'app-inventory-items',
   standalone: true,
-  imports: [CommonModule, FormsModule, ReactiveFormsModule, RouterModule, SidebarComponent, TranslateModule],
+  imports: [CommonModule, FormsModule, ReactiveFormsModule, RouterModule, SidebarComponent],
   template: `
     <app-sidebar>
       <div class="page-header">
-        <h1>{{ 'inventory.items.title' | translate }}</h1>
+        <h1>Inventory Items</h1>
         @if (!showItemModal() && !showAdjustModal()) {
           <button class="btn btn-primary" (click)="openCreateModal()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
-            {{ 'inventory.items.addItem' | translate }}
+            Add Item
           </button>
         }
       </div>
@@ -46,20 +45,20 @@ import {
           <div class="search-group">
             <input
               type="text"
-              [placeholder]="'inventory.searchPlaceholder' | translate"
+              placeholder="Search by name or SKU..."
               [(ngModel)]="searchQuery"
               (input)="filterItems()"
             />
           </div>
           <select [(ngModel)]="categoryFilter" (change)="filterItems()">
-            <option value="">{{ 'inventory.filter.allCategories' | translate }}</option>
+            <option value="">All Categories</option>
             @for (cat of categories; track cat) {
-              <option [value]="cat">{{ 'common.categories.' + cat | translate }}</option>
+              <option [value]="cat">{{ formatCategory(cat) }}</option>
             }
           </select>
           <label class="checkbox-filter">
             <input type="checkbox" [(ngModel)]="showLowStock" (change)="filterItems()" />
-            <span>{{ 'inventory.filter.lowStockOnly' | translate }}</span>
+            <span>Low Stock Only</span>
           </label>
         </div>
 
@@ -67,15 +66,15 @@ import {
         <div class="stats-row">
           <div class="stat-card">
             <span class="stat-value">{{ totalItems() }}</span>
-            <span class="stat-label">{{ 'inventory.stats.totalItems' | translate }}</span>
+            <span class="stat-label">Total Items</span>
           </div>
           <div class="stat-card stat-warning">
             <span class="stat-value">{{ lowStockCount() }}</span>
-            <span class="stat-label">{{ 'inventory.stats.lowStock' | translate }}</span>
+            <span class="stat-label">Low Stock</span>
           </div>
           <div class="stat-card">
             <span class="stat-value">{{ formatCurrency(totalValue()) }}</span>
-            <span class="stat-label">{{ 'inventory.stats.totalValue' | translate }}</span>
+            <span class="stat-label">Total Value</span>
           </div>
         </div>
 
@@ -92,7 +91,7 @@ import {
 
         @if (loading()) {
           <div class="empty-state">
-            <p>{{ 'common.loading' | translate }}</p>
+            <p>Loading items...</p>
           </div>
         } @else if (filteredItems().length === 0) {
           <div class="empty-state">
@@ -101,23 +100,23 @@ import {
                 <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
               </svg>
             </div>
-            <h3>{{ 'inventory.empty.title' | translate }}</h3>
-            <p>{{ 'inventory.empty.subtitle' | translate }}</p>
-            <button class="btn btn-primary" (click)="openCreateModal()">{{ 'inventory.items.addItem' | translate }}</button>
+            <h3>No inventory items yet</h3>
+            <p>Add your first item to start tracking inventory</p>
+            <button class="btn btn-primary" (click)="openCreateModal()">Add Item</button>
           </div>
         } @else {
           <div class="table-card">
             <table>
               <thead>
                 <tr>
-                  <th>{{ 'inventory.table.sku' | translate }}</th>
-                  <th>{{ 'inventory.table.name' | translate }}</th>
-                  <th>{{ 'inventory.table.category' | translate }}</th>
-                  <th>{{ 'inventory.table.stock' | translate }}</th>
-                  <th>{{ 'inventory.table.reorder' | translate }}</th>
-                  <th>{{ 'inventory.table.avgCost' | translate }}</th>
-                  <th>{{ 'inventory.table.value' | translate }}</th>
-                  <th>{{ 'inventory.table.status' | translate }}</th>
+                  <th>SKU</th>
+                  <th>Name</th>
+                  <th>Category</th>
+                  <th>Stock</th>
+                  <th>Reorder</th>
+                  <th>Avg. Cost</th>
+                  <th>Value</th>
+                  <th>Status</th>
                   <th></th>
                 </tr>
               </thead>
@@ -131,35 +130,35 @@ import {
                         <small class="text-muted">{{ item.description }}</small>
                       }
                     </td>
-                    <td>{{ item.category ? ('common.categories.' + item.category | translate) : '-' }}</td>
+                    <td>{{ item.category ? formatCategory(item.category) : '-' }}</td>
                     <td [class.negative]="(item.current_quantity || 0) < 0">
-                      {{ (item.current_quantity || 0).toFixed(2) }} {{ item.unit ? ('common.units.' + item.unit | translate) : '' }}
+                      {{ (item.current_quantity || 0).toFixed(2) }} {{ item.unit || '' }}
                     </td>
                     <td>{{ (item.reorder_level || 0).toFixed(2) }}</td>
                     <td>{{ formatCurrency(item.average_cost_cents || 0) }}</td>
                     <td>{{ formatCurrency((item.current_quantity || 0) * (item.average_cost_cents || 0)) }}</td>
                     <td>
                       @if (item.is_low_stock) {
-                        <span class="status-badge warning">{{ 'inventory.status.lowStock' | translate }}</span>
+                        <span class="status-badge warning">Low Stock</span>
                       } @else if (!item.is_active) {
-                        <span class="status-badge">{{ 'inventory.status.inactive' | translate }}</span>
+                        <span class="status-badge">Inactive</span>
                       } @else {
-                        <span class="status-badge success">{{ 'inventory.status.ok' | translate }}</span>
+                        <span class="status-badge success">OK</span>
                       }
                     </td>
                     <td class="actions">
-                      <button class="icon-btn" [title]="'inventory.adjust.title' | translate" (click)="openAdjustModal(item)">
+                      <button class="icon-btn" title="Adjust Stock" (click)="openAdjustModal(item)">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <path d="M12 20V10M18 20V4M6 20v-4"/>
                         </svg>
                       </button>
-                      <button class="icon-btn" [title]="'common.edit' | translate" (click)="openEditModal(item)">
+                      <button class="icon-btn" title="Edit" (click)="openEditModal(item)">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
                           <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
                         </svg>
                       </button>
-                      <button class="icon-btn icon-btn-danger" [title]="'common.delete' | translate" (click)="confirmDelete(item)">
+                      <button class="icon-btn icon-btn-danger" title="Delete" (click)="confirmDelete(item)">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <polyline points="3,6 5,6 21,6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
                         </svg>
@@ -178,7 +177,7 @@ import {
         <div class="modal-overlay" (click)="closeModals()">
           <div class="modal" (click)="$event.stopPropagation()">
             <div class="form-header">
-              <h3>{{ editingItem() ? ('inventory.items.editItem' | translate) : ('inventory.items.addItem' | translate) }}</h3>
+              <h3>{{ editingItem() ? 'Edit Item' : 'New Item' }}</h3>
               <button class="icon-btn" (click)="closeModals()">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M18 6L6 18M6 6l12 12"/>
@@ -188,50 +187,50 @@ import {
             <form [formGroup]="itemForm" (ngSubmit)="saveItem()">
               <div class="form-row">
                 <div class="form-group">
-                  <label for="sku">{{ 'inventory.items.form.sku' | translate }}</label>
+                  <label for="sku">SKU</label>
                   <input type="text" id="sku" formControlName="sku" placeholder="e.g., FLOUR-001" />
                 </div>
                 <div class="form-group">
-                  <label for="name">{{ 'inventory.items.form.name' | translate }}</label>
+                  <label for="name">Name</label>
                   <input type="text" id="name" formControlName="name" placeholder="e.g., All-Purpose Flour" />
                 </div>
               </div>
               <div class="form-group">
-                <label for="description">{{ 'inventory.items.form.description' | translate }}</label>
+                <label for="description">Description</label>
                 <input type="text" id="description" formControlName="description" />
               </div>
               <div class="form-row">
                 <div class="form-group">
-                  <label for="unit">{{ 'inventory.items.form.unit' | translate }}</label>
+                  <label for="unit">Unit</label>
                   <select id="unit" formControlName="unit">
                     @for (unit of units; track unit) {
-                      <option [value]="unit">{{ 'common.units.' + unit | translate }}</option>
+                      <option [value]="unit">{{ formatUnit(unit) }}</option>
                     }
                   </select>
                 </div>
                 <div class="form-group">
-                  <label for="category">{{ 'inventory.items.form.category' | translate }}</label>
+                  <label for="category">Category</label>
                   <select id="category" formControlName="category">
                     @for (cat of categories; track cat) {
-                      <option [value]="cat">{{ 'common.categories.' + cat | translate }}</option>
+                      <option [value]="cat">{{ formatCategory(cat) }}</option>
                     }
                   </select>
                 </div>
               </div>
               <div class="form-row">
                 <div class="form-group">
-                  <label for="reorder_level">{{ 'inventory.items.form.reorderLevel' | translate }}</label>
+                  <label for="reorder_level">Reorder Level</label>
                   <input type="number" id="reorder_level" formControlName="reorder_level" step="0.01" min="0" />
                 </div>
                 <div class="form-group">
-                  <label for="reorder_quantity">{{ 'inventory.items.form.reorderQty' | translate }}</label>
+                  <label for="reorder_quantity">Reorder Qty</label>
                   <input type="number" id="reorder_quantity" formControlName="reorder_quantity" step="0.01" min="0" />
                 </div>
               </div>
               <div class="form-group">
-                <label for="default_supplier_id">{{ 'inventory.items.form.defaultSupplier' | translate }}</label>
+                <label for="default_supplier_id">Default Supplier</label>
                 <select id="default_supplier_id" formControlName="default_supplier_id">
-                  <option [value]="null">{{ 'inventory.items.form.noSupplier' | translate }}</option>
+                  <option [value]="null">-- None --</option>
                   @for (supplier of suppliers(); track supplier.id) {
                     <option [value]="supplier.id">{{ supplier.name }}</option>
                   }
@@ -241,14 +240,14 @@ import {
                 <div class="form-group">
                   <label class="checkbox-label">
                     <input type="checkbox" formControlName="is_active" />
-                    <span>{{ 'inventory.items.form.isActive' | translate }}</span>
+                    <span>Item is Active</span>
                   </label>
                 </div>
               }
               <div class="form-actions">
-                <button type="button" class="btn btn-secondary" (click)="closeModals()">{{ 'common.cancel' | translate }}</button>
+                <button type="button" class="btn btn-secondary" (click)="closeModals()">Cancel</button>
                 <button type="submit" class="btn btn-primary" [disabled]="!itemForm.valid || saving()">
-                  {{ saving() ? ('settings.saving' | translate) : (editingItem() ? ('common.save' | translate) : ('common.add' | translate)) }}
+                  {{ saving() ? 'Saving...' : (editingItem() ? 'Update' : 'Create') }}
                 </button>
               </div>
             </form>
@@ -261,7 +260,7 @@ import {
         <div class="modal-overlay" (click)="closeModals()">
           <div class="modal modal-sm" (click)="$event.stopPropagation()">
             <div class="form-header">
-              <h3>{{ 'inventory.adjust.title' | translate }}</h3>
+              <h3>Adjust Stock</h3>
               <button class="icon-btn" (click)="closeModals()">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M18 6L6 18M6 6l12 12"/>
@@ -271,47 +270,47 @@ import {
             <form [formGroup]="adjustForm" (ngSubmit)="submitAdjustment()">
               <div class="adjust-item-info">
                 <strong>{{ adjustingItem()?.name }}</strong>
-                <span>{{ 'inventory.adjust.current' | translate }}: {{ adjustingItem()?.current_quantity?.toFixed(2) }} {{ adjustingItem()?.unit ? ('common.units.' + adjustingItem()?.unit | translate) : '' }}</span>
+                <span>Current: {{ adjustingItem()?.current_quantity?.toFixed(2) }} {{ adjustingItem()?.unit }}</span>
               </div>
               <div class="form-group">
-                <label>{{ 'inventory.adjust.type' | translate }}</label>
+                <label>Adjustment Type</label>
                 <div class="radio-group">
                   <label class="radio-label">
                     <input type="radio" formControlName="adjustment_type" value="adjustment_add" />
-                    <span>{{ 'inventory.adjust.add' | translate }}</span>
+                    <span>Add Stock</span>
                   </label>
                   <label class="radio-label">
                     <input type="radio" formControlName="adjustment_type" value="adjustment_subtract" />
-                    <span>{{ 'inventory.adjust.remove' | translate }}</span>
+                    <span>Remove Stock</span>
                   </label>
                   <label class="radio-label">
                     <input type="radio" formControlName="adjustment_type" value="waste" />
-                    <span>{{ 'inventory.adjust.waste' | translate }}</span>
+                    <span>Record Waste</span>
                   </label>
                 </div>
               </div>
               <div class="form-row">
                 <div class="form-group">
-                  <label for="adjust_quantity">{{ 'common.quantity' | translate }}</label>
+                  <label for="adjust_quantity">Quantity</label>
                   <input type="number" id="adjust_quantity" formControlName="quantity" step="0.01" min="0.01" />
                 </div>
                 <div class="form-group">
-                  <label for="adjust_unit">{{ 'inventory.items.form.unit' | translate }}</label>
+                  <label for="adjust_unit">Unit</label>
                   <select id="adjust_unit" formControlName="unit">
                     @for (unit of units; track unit) {
-                      <option [value]="unit">{{ 'common.units.' + unit | translate }}</option>
+                      <option [value]="unit">{{ formatUnit(unit) }}</option>
                     }
                   </select>
                 </div>
               </div>
               <div class="form-group">
-                <label for="adjust_notes">{{ 'inventory.adjust.reasonPlaceholder' | translate }}</label>
-                <input type="text" id="adjust_notes" formControlName="notes" [placeholder]="'inventory.adjust.reasonPlaceholder' | translate" />
+                <label for="adjust_notes">Notes</label>
+                <input type="text" id="adjust_notes" formControlName="notes" placeholder="Reason for adjustment" />
               </div>
               <div class="form-actions">
-                <button type="button" class="btn btn-secondary" (click)="closeModals()">{{ 'common.cancel' | translate }}</button>
+                <button type="button" class="btn btn-secondary" (click)="closeModals()">Cancel</button>
                 <button type="submit" class="btn btn-primary" [disabled]="!adjustForm.valid || saving()">
-                  {{ saving() ? ('inventory.adjust.processing' | translate) : ('inventory.adjust.apply' | translate) }}
+                  {{ saving() ? 'Processing...' : 'Apply' }}
                 </button>
               </div>
             </form>
@@ -323,12 +322,12 @@ import {
       @if (showDeleteModal()) {
         <div class="modal-overlay" (click)="closeModals()">
           <div class="modal modal-sm" (click)="$event.stopPropagation()">
-            <h3>{{ 'inventory.delete.title' | translate }}</h3>
-            <p>{{ 'inventory.delete.confirm' | translate: { name: deletingItem()?.name } }}</p>
+            <h3>Delete Item</h3>
+            <p>Are you sure you want to delete "{{ deletingItem()?.name }}"?</p>
             <div class="modal-actions">
-              <button class="btn btn-secondary" (click)="closeModals()">{{ 'common.cancel' | translate }}</button>
+              <button class="btn btn-secondary" (click)="closeModals()">Cancel</button>
               <button class="btn btn-danger" (click)="deleteItem()" [disabled]="saving()">
-                {{ saving() ? ('inventory.delete.deleting' | translate) : ('common.delete' | translate) }}
+                {{ saving() ? 'Deleting...' : 'Delete' }}
               </button>
             </div>
           </div>
@@ -336,7 +335,6 @@ import {
       }
     </app-sidebar>
   `,
-
   styles: [`
     .page-header {
       display: flex;

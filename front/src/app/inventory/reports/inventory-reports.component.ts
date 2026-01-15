@@ -7,7 +7,6 @@
 
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { TranslateModule } from '@ngx-translate/core';
 import { SidebarComponent } from '../../shared/sidebar.component';
 import { InventoryService } from '../inventory.service';
 import { InventoryValuation, InventoryTransaction } from '../inventory.types';
@@ -15,16 +14,16 @@ import { InventoryValuation, InventoryTransaction } from '../inventory.types';
 @Component({
   selector: 'app-inventory-reports',
   standalone: true,
-  imports: [CommonModule, SidebarComponent, TranslateModule],
+  imports: [CommonModule, SidebarComponent],
   template: `
     <app-sidebar>
       <div class="page-header">
-        <h1>{{ 'inventory.reports.title' | translate }}</h1>
+        <h1>Inventory Reports</h1>
         <button class="btn btn-secondary" (click)="loadData()">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="23,4 23,10 17,10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
           </svg>
-          {{ 'common.loading' | translate }}
+          Refresh
         </button>
       </div>
 
@@ -32,17 +31,17 @@ import { InventoryValuation, InventoryTransaction } from '../inventory.types';
         <!-- Valuation Report -->
         <div class="section">
           <div class="section-header">
-            <h2>{{ 'inventory.reports.fifoValuation' | translate }}</h2>
+            <h2>FIFO Inventory Valuation</h2>
             @if (valuation()) {
-              <span class="date-tag">{{ 'inventory.reports.asOf' | translate: { date: formatDateTime(valuation()!.as_of_date) } }}</span>
+              <span class="date-tag">As of {{ formatDateTime(valuation()!.as_of_date) }}</span>
             }
           </div>
 
           @if (loadingValuation()) {
-            <div class="loading-state">{{ 'common.loading' | translate }}</div>
+            <div class="loading-state">Loading valuation...</div>
           } @else if (valuation()) {
             <div class="total-card">
-              <span class="total-label">{{ 'inventory.reports.totalValue' | translate }}</span>
+              <span class="total-label">Total Inventory Value</span>
               <span class="total-value">{{ formatCurrency(valuation()!.total_value_cents) }}</span>
             </div>
 
@@ -50,10 +49,10 @@ import { InventoryValuation, InventoryTransaction } from '../inventory.types';
               <table>
                 <thead>
                   <tr>
-                    <th>{{ 'inventory.reports.table.sku' | translate }}</th>
-                    <th>{{ 'inventory.reports.table.item' | translate }}</th>
-                    <th>{{ 'inventory.reports.table.quantity' | translate }}</th>
-                    <th>{{ 'inventory.reports.table.fifoValue' | translate }}</th>
+                    <th>SKU</th>
+                    <th>Item</th>
+                    <th>Quantity</th>
+                    <th>FIFO Value</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -61,7 +60,7 @@ import { InventoryValuation, InventoryTransaction } from '../inventory.types';
                     <tr>
                       <td class="sku-cell">{{ item.sku }}</td>
                       <td>{{ item.name }}</td>
-                      <td>{{ item.quantity.toFixed(2) }} {{ 'common.units.' + item.unit | translate }}</td>
+                      <td>{{ item.quantity.toFixed(2) }} {{ item.unit }}</td>
                       <td class="price">{{ formatCurrency(item.fifo_value_cents) }}</td>
                     </tr>
                   }
@@ -74,27 +73,27 @@ import { InventoryValuation, InventoryTransaction } from '../inventory.types';
         <!-- Transaction History -->
         <div class="section">
           <div class="section-header">
-            <h2>{{ 'inventory.reports.transactions' | translate }}</h2>
+            <h2>Recent Transactions</h2>
           </div>
 
           @if (loadingTransactions()) {
-            <div class="loading-state">{{ 'common.loading' | translate }}</div>
+            <div class="loading-state">Loading transactions...</div>
           } @else if (transactions().length === 0) {
             <div class="empty-state">
-              <p>{{ 'inventory.reports.noTransactions' | translate }}</p>
+              <p>No transactions yet</p>
             </div>
           } @else {
             <div class="table-card">
               <table>
                 <thead>
                   <tr>
-                    <th>{{ 'inventory.reports.table.date' | translate }}</th>
-                    <th>{{ 'inventory.reports.table.item' | translate }}</th>
-                    <th>{{ 'inventory.reports.table.type' | translate }}</th>
-                    <th>{{ 'inventory.reports.table.quantity' | translate }}</th>
-                    <th>{{ 'inventory.reports.table.cost' | translate }}</th>
-                    <th>{{ 'inventory.reports.table.balance' | translate }}</th>
-                    <th>{{ 'inventory.reports.table.notes' | translate }}</th>
+                    <th>Date</th>
+                    <th>Item</th>
+                    <th>Type</th>
+                    <th>Quantity</th>
+                    <th>Cost</th>
+                    <th>Balance</th>
+                    <th>Notes</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -123,7 +122,6 @@ import { InventoryValuation, InventoryTransaction } from '../inventory.types';
       </div>
     </app-sidebar>
   `,
-
   styles: [`
     .page-header {
       display: flex;

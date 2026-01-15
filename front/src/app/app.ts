@@ -1,6 +1,5 @@
 import { Component, signal, OnInit, OnDestroy, inject } from '@angular/core';
 import { RouterOutlet, Router, NavigationEnd } from '@angular/router';
-import { TranslateService } from '@ngx-translate/core';
 import { filter, Subscription } from 'rxjs';
 
 @Component({
@@ -12,15 +11,9 @@ import { filter, Subscription } from 'rxjs';
 export class App implements OnInit, OnDestroy {
   protected readonly title = signal('front');
   private router = inject(Router);
-  private translateService = inject(TranslateService);
   private routerSub?: Subscription;
 
   ngOnInit() {
-    // Initialize language from localStorage
-    const savedLang = localStorage.getItem('preferred-language') || 'en';
-    this.translateService.setDefaultLang('en');
-    this.translateService.use(savedLang);
-
     // Set initial favicon based on current route
     this.updateFavicon(this.router.url);
 
@@ -43,7 +36,7 @@ export class App implements OnInit, OnDestroy {
     // Admin dashboard routes use blue favicon
     const isCustomerMenu = url.startsWith('/menu/');
     const faviconPath = isCustomerMenu ? '/favicon.svg' : '/favicon-admin.svg';
-
+    
     this.setFavicon(faviconPath);
   }
 

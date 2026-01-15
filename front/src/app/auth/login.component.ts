@@ -1,24 +1,23 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { TranslateModule } from '@ngx-translate/core';
 import { ApiService } from '../services/api.service';
 
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [ReactiveFormsModule, RouterLink, TranslateModule],
+  imports: [ReactiveFormsModule, RouterLink],
   template: `
     <div class="auth-page">
       <div class="auth-card">
         <div class="auth-header">
-          <h1>{{ 'auth.login.title' | translate }}</h1>
-          <p>{{ 'auth.login.subtitle' | translate }}</p>
+          <h1>Welcome back</h1>
+          <p>Sign in to your account</p>
         </div>
 
         <form [formGroup]="form" (ngSubmit)="onSubmit()">
           <div class="form-group">
-            <label for="email">{{ 'common.email' | translate }}</label>
+            <label for="email">Email</label>
             <input 
               id="email" 
               type="email" 
@@ -30,7 +29,7 @@ import { ApiService } from '../services/api.service';
           </div>
 
           <div class="form-group">
-            <label for="password">{{ 'common.password' | translate }}</label>
+            <label for="password">Password</label>
             <input 
               id="password" 
               type="password" 
@@ -46,17 +45,13 @@ import { ApiService } from '../services/api.service';
           }
 
           <button type="submit" class="btn-submit" [disabled]="form.invalid || loading()">
-            @if (loading()) {
-              <span>{{ 'auth.login.signingIn' | translate }}</span>
-            } @else {
-              <span>{{ 'auth.login.signIn' | translate }}</span>
-            }
+            {{ loading() ? 'Signing in...' : 'Sign in' }}
           </button>
         </form>
 
         <div class="auth-footer">
-          <span>{{ 'auth.login.noAccount' | translate }}</span>
-          <a routerLink="/register">{{ 'auth.login.createAccount' | translate }}</a>
+          <span>Don't have an account?</span>
+          <a routerLink="/register">Create account</a>
         </div>
       </div>
     </div>

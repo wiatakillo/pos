@@ -2,26 +2,25 @@ import { Component, inject, signal, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { QRCodeComponent } from 'angularx-qrcode';
-import { TranslateModule } from '@ngx-translate/core';
 import { ApiService, Table, TenantSettings } from '../services/api.service';
 import { SidebarComponent } from '../shared/sidebar.component';
 
 @Component({
   selector: 'app-tables',
   standalone: true,
-  imports: [FormsModule, QRCodeComponent, SidebarComponent, RouterLink, TranslateModule],
+  imports: [FormsModule, QRCodeComponent, SidebarComponent, RouterLink],
   template: `
     <app-sidebar>
         <div class="page-header">
           <div class="header-left">
-            <h1>{{ 'tables.title' | translate }}</h1>
+            <h1>Tables</h1>
             <a routerLink="/tables/canvas" class="btn btn-ghost btn-sm">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="3" y="3" width="18" height="18" rx="2"/>
                 <line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/>
                 <line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/>
               </svg>
-              {{ 'tables.canvasView' | translate }}
+              Canvas View
             </a>
           </div>
           @if (!showForm()) {
@@ -29,7 +28,7 @@ import { SidebarComponent } from '../shared/sidebar.component';
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
               </svg>
-              {{ 'tables.addTable' | translate }}
+              Add Table
             </button>
           }
         </div>
@@ -39,9 +38,9 @@ import { SidebarComponent } from '../shared/sidebar.component';
             <div class="form-card">
               <form (submit)="createTable($event)">
                 <div class="form-inline">
-                  <input type="text" [(ngModel)]="newTableName" name="name" [placeholder]="'tables.form.tableNamePlaceholder' | translate" required>
-                  <button type="submit" class="btn btn-primary">{{ 'common.add' | translate }}</button>
-                  <button type="button" class="btn btn-secondary" (click)="showForm.set(false)">{{ 'common.cancel' | translate }}</button>
+                  <input type="text" [(ngModel)]="newTableName" name="name" placeholder="Table name (e.g., Table 5)" required>
+                  <button type="submit" class="btn btn-primary">Add</button>
+                  <button type="button" class="btn btn-secondary" (click)="showForm.set(false)">Cancel</button>
                 </div>
               </form>
             </div>
@@ -52,7 +51,7 @@ import { SidebarComponent } from '../shared/sidebar.component';
           }
 
           @if (loading()) {
-            <div class="empty-state"><p>{{ 'common.loading' | translate }}</p></div>
+            <div class="empty-state"><p>Loading tables...</p></div>
           } @else if (tables().length === 0) {
             <div class="empty-state">
               <div class="empty-icon">
@@ -61,9 +60,9 @@ import { SidebarComponent } from '../shared/sidebar.component';
                   <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
                 </svg>
               </div>
-              <h3>{{ 'tables.noTables' | translate }}</h3>
-              <p>{{ 'tables.noTablesHint' | translate }}</p>
-              <button class="btn btn-primary" (click)="showForm.set(true)">{{ 'tables.addTable' | translate }}</button>
+              <h3>No tables yet</h3>
+              <p>Add tables to generate QR codes for customers</p>
+              <button class="btn btn-primary" (click)="showForm.set(true)">Add Table</button>
             </div>
           } @else {
             <div class="table-grid">
@@ -86,17 +85,17 @@ import { SidebarComponent } from '../shared/sidebar.component';
                           class="edit-input edit-input-seats"
                           min="1"
                           max="20"
-                          [placeholder]="'tables.seats' | translate"
+                          placeholder="Seats"
                           (keydown.enter)="saveTable(table)"
                           (keydown.escape)="cancelEdit()"
                         >
                         <div class="edit-actions">
-                          <button class="icon-btn icon-btn-success" (click)="saveTable(table)" [title]="'common.save' | translate">
+                          <button class="icon-btn icon-btn-success" (click)="saveTable(table)" title="Save">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                               <polyline points="20,6 9,17 4,12"/>
                             </svg>
                           </button>
-                          <button class="icon-btn" (click)="cancelEdit()" [title]="'common.cancel' | translate">
+                          <button class="icon-btn" (click)="cancelEdit()" title="Cancel">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                               <path d="M18 6L6 18M6 6l12 12"/>
                             </svg>
@@ -112,17 +111,17 @@ import { SidebarComponent } from '../shared/sidebar.component';
                             <circle cx="9" cy="7" r="4"/>
                             <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
                           </svg>
-                          {{ table.seat_count || ('tables.notSet' | translate) }} {{ 'tables.seats' | translate }}
+                          {{ table.seat_count || 'Not set' }} seats
                         </div>
                       </div>
                       <div class="header-actions">
-                        <button class="icon-btn icon-btn-edit" (click)="startEdit(table)" [title]="'common.edit' | translate">
+                        <button class="icon-btn icon-btn-edit" (click)="startEdit(table)" title="Edit">
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
                             <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
                           </svg>
                         </button>
-                        <button class="icon-btn icon-btn-danger" (click)="deleteTable(table)" [title]="'common.delete' | translate">
+                        <button class="icon-btn icon-btn-danger" (click)="deleteTable(table)" title="Delete">
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polyline points="3,6 5,6 21,6"/>
                             <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
@@ -162,7 +161,7 @@ import { SidebarComponent } from '../shared/sidebar.component';
                     </div>
                   </div>
                   <div class="table-actions">
-                    <a [href]="getMenuUrl(table)" target="_blank" class="btn btn-secondary btn-sm">{{ 'tables.openMenu' | translate }}</a>
+                    <a [href]="getMenuUrl(table)" target="_blank" class="btn btn-secondary btn-sm">Open Menu</a>
                     <button 
                       class="btn btn-sm" 
                       [class.btn-ghost]="copiedTableId() !== table.id"
@@ -172,13 +171,13 @@ import { SidebarComponent } from '../shared/sidebar.component';
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <polyline points="20,6 9,17 4,12"/>
                         </svg>
-                        {{ 'tables.copied' | translate }}
+                        Copied!
                       } @else {
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
                           <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
                         </svg>
-                        {{ 'tables.copyLink' | translate }}
+                        Copy
                       }
                     </button>
                   </div>
@@ -360,7 +359,7 @@ export class TablesComponent implements OnInit {
   showForm = signal(false);
   newTableName = '';
   tenantSettings = signal<TenantSettings | null>(null);
-
+  
   editingTableId = signal<number | null>(null);
   editingName = '';
   editingSeatCount: number | null = null;
@@ -404,7 +403,7 @@ export class TablesComponent implements OnInit {
     if (!table.id) return;
     const url = this.getMenuUrl(table);
     const tableId = table.id;
-
+    
     // Try modern Clipboard API first
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(url).then(() => {
@@ -437,7 +436,7 @@ export class TablesComponent implements OnInit {
     document.body.appendChild(textarea);
     textarea.focus();
     textarea.select();
-
+    
     try {
       const successful = document.execCommand('copy');
       if (successful) {
@@ -475,15 +474,15 @@ export class TablesComponent implements OnInit {
 
   saveTable(table: Table) {
     if (!table.id || !this.editingName.trim()) return;
-
+    
     const updates: Partial<Table> = {
       name: this.editingName.trim()
     };
-
+    
     if (this.editingSeatCount !== null && this.editingSeatCount > 0) {
       updates.seat_count = this.editingSeatCount;
     }
-
+    
     this.api.updateTable(table.id, updates).subscribe({
       next: updated => {
         this.tables.update(t => t.map(x => x.id === table.id ? updated : x));

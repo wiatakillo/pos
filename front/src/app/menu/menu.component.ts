@@ -1,7 +1,6 @@
 import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
-import { TranslateModule, TranslateService } from '@ngx-translate/core';
 import { ApiService, Product, OrderItemCreate } from '../services/api.service';
 import { AudioService } from '../services/audio.service';
 import { environment } from '../../environments/environment';
@@ -25,18 +24,18 @@ interface PlacedOrder {
 @Component({
   selector: 'app-menu',
   standalone: true,
-  imports: [FormsModule, TranslateModule],
+  imports: [FormsModule],
   template: `
     <div class="menu-page">
       @if (loading()) {
         <div class="loading-screen">
           <div class="spinner"></div>
-          <p>{{ 'menu.loading' | translate }}</p>
+          <p>Loading menu...</p>
         </div>
       } @else if (error()) {
         <div class="error-screen">
-          <h1>{{ 'menu.notFound' | translate }}</h1>
-          <p>{{ 'menu.notFoundHint' | translate }}</p>
+          <h1>Menu Not Found</h1>
+          <p>This table link may be invalid or expired.</p>
         </div>
       } @else {
         <header class="header">
@@ -57,9 +56,9 @@ interface PlacedOrder {
           @if (placedOrders().length > 0) {
             <section class="section">
               <button class="section-header" (click)="ordersExpanded.set(!ordersExpanded())">
-                <span class="section-title">{{ 'menu.yourOrder' | translate }} #{{ placedOrders()[0].id }}</span>
+                <span class="section-title">Your Order #{{ placedOrders()[0].id }}</span>
                 <span class="status-pill" [class]="'status-' + placedOrders()[0].status">
-                  {{ getStatusLabel(placedOrders()[0].status) | translate }}
+                  {{ getStatusLabel(placedOrders()[0].status) }}
                 </span>
                 <svg class="chevron" [class.expanded]="ordersExpanded()" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="6,9 12,15 18,9"/>
@@ -71,7 +70,7 @@ interface PlacedOrder {
                   @for (order of placedOrders(); track order.id) {
                     <div class="order-card">
                       <div class="order-total-header">
-                        <span class="order-total">{{ 'menu.total' | translate }}: {{ formatPrice(order.total) }}</span>
+                        <span class="order-total">Total: {{ formatPrice(order.total) }}</span>
                       </div>
                       <div class="order-items">
                       @for (item of getSortedOrderItems(order.items); track getProductKey(item.product)) {
@@ -93,7 +92,7 @@ interface PlacedOrder {
                             <span class="item-price">{{ formatPrice(item.product.price_cents * item.quantity) }}</span>
                             @if (item.status) {
                               <span class="item-status-badge" [class]="'status-' + item.status">
-                                {{ getItemStatusLabel(item.status) | translate }}
+                                {{ getItemStatusLabel(item.status) }}
                               </span>
                             }
                             @if (!isPaid() && item.itemId && item.status === 'pending') {
@@ -109,16 +108,16 @@ interface PlacedOrder {
                       </div>
                       <div class="order-actions-wrapper">
                         @if (isPaid()) {
-                          <div class="paid-banner">{{ 'menu.paid' | translate }}</div>
+                          <div class="paid-banner">Paid</div>
                         } @else {
                           <div class="order-actions-row">
                             @if (canCancelOrder(order)) {
                               <button class="cancel-order-btn" (click)="cancelOrder(order.id)" [disabled]="processingPayment()">
-                                {{ 'menu.cancelOrder' | translate }}
+                                Cancel Order
                               </button>
                             }
                             <button class="pay-btn" (click)="startCheckout(order)" [disabled]="processingPayment()">
-                              {{ processingPayment() ? ('menu.processing' | translate) : ('menu.payNow' | translate) }}
+                              {{ processingPayment() ? 'Processing...' : 'Pay Now' }}
                             </button>
                           </div>
                         }
@@ -133,7 +132,7 @@ interface PlacedOrder {
           <!-- Menu -->
           <section class="section">
             <button class="section-header" (click)="menuExpanded.set(!menuExpanded())">
-              <span class="section-title">{{ 'menu.title' | translate }}</span>
+              <span class="section-title">Menu</span>
               <span class="count-badge">{{ filteredProducts().length }}</span>
               <svg class="chevron" [class.expanded]="menuExpanded()" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="6,9 12,15 18,9"/>
@@ -149,7 +148,7 @@ interface PlacedOrder {
                       class="category-btn" 
                       [class.active]="selectedCategory() === null"
                       (click)="selectCategory(null)">
-                      {{ 'menu.allCategories' | translate }}
+                      All Categories
                     </button>
                     @for (category of availableCategories(); track category) {
                       <button 
@@ -169,7 +168,7 @@ interface PlacedOrder {
                       class="subcategory-btn" 
                       [class.active]="selectedSubcategory() === null"
                       (click)="selectSubcategory(null)">
-                      {{ 'common.all' | translate }} {{ selectedCategory() }}
+                      All {{ selectedCategory() }}
                     </button>
                     @for (subcategoryCode of availableSubcategories(); track subcategoryCode) {
                       <button 
@@ -226,7 +225,7 @@ interface PlacedOrder {
                             <span class="wine-badge">{{ product.wine_style }}</span>
                           }
                           @if (product.vintage) {
-                            <span class="wine-badge">{{ 'catalog.item.vintage' | translate }} {{ product.vintage }}</span>
+                            <span class="wine-badge">Vintage {{ product.vintage }}</span>
                           }
                           @if (product.winery) {
                             <span class="wine-badge">{{ product.winery }}</span>
@@ -243,7 +242,7 @@ interface PlacedOrder {
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M12 6v12M6 12h12"/>
                           </svg>
-                          <span>{{ 'menu.description' | translate }}</span>
+                          <span>Description</span>
                           <svg class="chevron-icon" [class.open]="showDescriptionFor() === product.id" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                             <polyline points="6,9 12,15 18,9"/>
                           </svg>
@@ -258,14 +257,14 @@ interface PlacedOrder {
                       <!-- Aromas -->
                       @if (product.aromas) {
                         <div class="product-aromas">
-                          <strong>{{ 'menu.aromas' | translate }}:</strong> {{ product.aromas }}
+                          <strong>Aromas:</strong> {{ product.aromas }}
                         </div>
                       }
                       
                       <!-- Elaboration -->
                       @if (product.elaboration) {
                         <div class="product-elaboration">
-                          <strong>{{ 'menu.elaboration' | translate }}:</strong> {{ product.elaboration }}
+                          <strong>Elaboration:</strong> {{ product.elaboration }}
                         </div>
                       }
                       
@@ -274,7 +273,7 @@ interface PlacedOrder {
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
                           </svg>
-                          <span>{{ 'menu.ingredients' | translate }}</span>
+                          <span>Ingredients</span>
                           <svg class="chevron-icon" [class.open]="showIngredientsFor() === product.id" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                             <polyline points="6,9 12,15 18,9"/>
                           </svg>
@@ -302,8 +301,8 @@ interface PlacedOrder {
         @if (cart().length > 0) {
           <div class="cart-panel">
             <div class="cart-header">
-              <h3>{{ 'menu.yourCart' | translate }}</h3>
-              <span class="cart-count">{{ getTotalItems() }} {{ 'menu.items' | translate }}</span>
+              <h3>Your Cart</h3>
+              <span class="cart-count">{{ getTotalItems() }} items</span>
             </div>
             
             <div class="cart-items">
@@ -324,11 +323,11 @@ interface PlacedOrder {
 
             <div class="cart-footer">
               <div class="cart-total">
-                <span>{{ 'menu.total' | translate }}</span>
+                <span>Total</span>
                 <span class="total-amount">{{ formatPrice(getTotal()) }}</span>
               </div>
               <button class="submit-btn" (click)="submitOrder()" [disabled]="submitting()">
-                {{ submitting() ? ('menu.placingOrder' | translate) : (placedOrders().length > 0 ? ('menu.addToOrder' | translate) : ('menu.placeOrder' | translate)) }}
+                {{ submitting() ? 'Placing Order...' : (placedOrders().length > 0 ? 'Add to Order' : 'Place Order') }}
               </button>
             </div>
           </div>
@@ -336,7 +335,7 @@ interface PlacedOrder {
 
         <!-- Success Toast -->
         @if (showSuccessToast()) {
-          <div class="toast">{{ 'menu.itemAdded' | translate }} #{{ lastOrderId() }}</div>
+          <div class="toast">Items added to Order #{{ lastOrderId() }}</div>
         }
 
         <!-- Customer Name Modal -->
@@ -344,7 +343,7 @@ interface PlacedOrder {
           <div class="modal-overlay" (click)="skipName()">
             <div class="modal" (click)="$event.stopPropagation()">
               <div class="modal-header">
-                <h3>{{ 'menu.whatsYourName' | translate }}</h3>
+                <h3>What's your name?</h3>
                 <button class="close-btn" (click)="skipName()">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M18 6L6 18M6 6l12 12"/>
@@ -352,20 +351,20 @@ interface PlacedOrder {
                 </button>
               </div>
               <div class="modal-body">
-                <p class="name-prompt-text">{{ 'menu.nameOptional' | translate }}</p>
+                <p class="name-prompt-text">(optional - you can skip this)</p>
                 <input 
                   type="text" 
                   class="name-input" 
                   [(ngModel)]="nameInputValue"
-                  [placeholder]="'menu.enterYourName' | translate"
+                  placeholder="Enter your name"
                   (keyup.enter)="confirmName()"
                   #nameInput
                   autofocus
                 />
               </div>
               <div class="modal-footer">
-                <button class="btn-skip" (click)="skipName()">{{ 'menu.skip' | translate }}</button>
-                <button class="btn-ok" (click)="confirmName()">{{ 'menu.ok' | translate }}</button>
+                <button class="btn-skip" (click)="skipName()">Skip</button>
+                <button class="btn-ok" (click)="confirmName()">OK</button>
               </div>
             </div>
           </div>
@@ -376,7 +375,7 @@ interface PlacedOrder {
           <div class="modal-overlay" (click)="cancelPayment()">
             <div class="modal" (click)="$event.stopPropagation()">
               <div class="modal-header">
-                <h3>{{ 'menu.checkout' | translate }}</h3>
+                <h3>Checkout</h3>
                 <button class="close-btn" (click)="cancelPayment()">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M18 6L6 18M6 6l12 12"/>
@@ -385,24 +384,24 @@ interface PlacedOrder {
               </div>
               <div class="modal-body">
                 <div class="payment-total">
-                  {{ 'menu.total' | translate }}: <strong>{{ formatPrice(paymentAmount()) }}</strong>
+                  Total: <strong>{{ formatPrice(paymentAmount()) }}</strong>
                 </div>
                 <div id="card-element" class="card-element"></div>
                 @if (cardError()) {
                   <div class="card-errors">{{ cardError() }}</div>
                 }
                 @if (paymentSuccess()) {
-                  <div class="payment-success">{{ 'menu.paymentSuccess' | translate }}</div>
+                  <div class="payment-success">Payment successful!</div>
                 }
               </div>
               <div class="modal-footer">
                 @if (!paymentSuccess()) {
-                  <button class="btn-cancel" (click)="cancelPayment()">{{ 'common.cancel' | translate }}</button>
+                  <button class="btn-cancel" (click)="cancelPayment()">Cancel</button>
                   <button class="btn-pay" (click)="processPayment()" [disabled]="processingPayment()">
-                    {{ processingPayment() ? ('menu.processing' | translate) : ('menu.pay' | translate) }}
+                    {{ processingPayment() ? 'Processing...' : 'Pay' }}
                   </button>
                 } @else {
-                  <button class="btn-done" (click)="finishPayment()">{{ 'menu.done' | translate }}</button>
+                  <button class="btn-done" (click)="finishPayment()">Done</button>
                 }
               </div>
             </div>
@@ -1230,7 +1229,7 @@ export class MenuComponent implements OnInit {
     // Generate or get session_id from localStorage
     const sessionKey = `session_${this.tableToken}`;
     let sessionId = localStorage.getItem(sessionKey);
-
+    
     if (!sessionId) {
       // Generate new UUID v4
       sessionId = this.generateUUID();
@@ -1241,7 +1240,7 @@ export class MenuComponent implements OnInit {
     // Get or prompt for customer name (optional)
     const nameKey = `customer_name_${this.tableToken}`;
     let customerName = localStorage.getItem(nameKey);
-
+    
     if (!customerName) {
       // Show modal for customer name (optional - user can skip)
       this.showNameModal.set(true);
@@ -1409,7 +1408,7 @@ export class MenuComponent implements OnInit {
           this.audio.playCustomerStatusChange();
           // Update order status if provided
           if (data.status) {
-            this.placedOrders.update(orders =>
+            this.placedOrders.update(orders => 
               orders.map(o => o.id === data.order_id ? { ...o, status: data.status } : o)
             );
           }
@@ -1438,10 +1437,10 @@ export class MenuComponent implements OnInit {
         this.tenantName.set(data.tenant_name);
         this.tableName.set(data.table_name);
         this.tenantId = data.tenant_id;
-
+        
         // Connect to WebSocket for table-specific updates
         this.connectWebSocket();
-
+        
         // Extract available main categories from products
         const categories = new Set<string>();
         productsWithSource.forEach((product: Product) => {
@@ -1450,18 +1449,18 @@ export class MenuComponent implements OnInit {
           }
         });
         this.availableCategories.set(Array.from(categories).sort());
-
+        
         // Update subcategories based on selected category
         this.updateSubcategories(null);
-
+        
         // Apply initial filter (show all)
         this.applyFilter(null, null);
-
+        
         // Set tenant logo if available
         if (data.tenant_logo && data.tenant_id) {
           this.tenantLogo.set(`${environment.apiUrl}/uploads/${data.tenant_id}/logo/${data.tenant_logo}`);
         }
-
+        
         // Set additional tenant info
         this.tenantDescription.set(data.tenant_description || null);
         this.tenantPhone.set(data.tenant_phone || null);
@@ -1469,12 +1468,12 @@ export class MenuComponent implements OnInit {
         this.tenantAddress.set(data.tenant_address || null);
         this.tenantWebsite.set(data.tenant_website || null);
         this.tenantCurrency.set(data.tenant_currency || '$');
-
+        
         // Set tenant Stripe publishable key for payments
         if (data.tenant_stripe_publishable_key) {
           this.api.setTenantStripeKey(data.tenant_stripe_publishable_key);
         }
-
+        
         this.loading.set(false);
         this.connectWebSocket();
       },
@@ -1502,7 +1501,7 @@ export class MenuComponent implements OnInit {
 
     // Extract all subcategory codes from products in the selected category
     const subcategoryCodes = new Set<string>();
-
+    
     this.products().forEach((product: Product) => {
       if (product.category === category) {
         // Use subcategory_codes if available (from backend)
@@ -1527,7 +1526,7 @@ export class MenuComponent implements OnInit {
         }
       }
     });
-
+    
     // Build ordered subcategory list (wine types first, then others, then Wine by Glass)
     const orderedCodes = [
       // Wine types
@@ -1545,22 +1544,22 @@ export class MenuComponent implements OnInit {
       // Wine by Glass (always last)
       'WINE_BY_GLASS'
     ];
-
+    
     const subcategories: string[] = [];
-
+    
     orderedCodes.forEach(code => {
       if (subcategoryCodes.has(code)) {
         subcategories.push(code);
       }
     });
-
+    
     this.availableSubcategories.set(subcategories);
   }
 
   extractOtherSubcategoryCodes(subcategory: string): string[] {
     const codes: string[] = [];
     const subcatLower = subcategory.toLowerCase();
-
+    
     // Map common subcategory strings to codes
     if (subcategory === 'Appetizers' || subcatLower.includes('appetizers')) codes.push('APPETIZERS');
     if (subcategory === 'Salads' || subcatLower.includes('salads')) codes.push('SALADS');
@@ -1588,7 +1587,7 @@ export class MenuComponent implements OnInit {
     if (subcategory === 'Vegetables') codes.push('VEGETABLES');
     if (subcategory === 'Potatoes') codes.push('POTATOES');
     if (subcategory === 'Bread') codes.push('BREAD');
-
+    
     return codes;
   }
 
@@ -1605,18 +1604,18 @@ export class MenuComponent implements OnInit {
 
   applyFilter(category: string | null, subcategoryCode: string | null) {
     let filtered = this.products();
-
+    
     // Filter by main category
     if (category) {
       filtered = filtered.filter(p => p.category === category);
     }
-
+    
     // Filter by subcategory code
     if (subcategoryCode) {
       if (subcategoryCode === 'WINE_BY_GLASS') {
         // Filter for products with "Wine by Glass" code
-        filtered = filtered.filter(p =>
-          p.subcategory_codes?.includes('WINE_BY_GLASS') ||
+        filtered = filtered.filter(p => 
+          p.subcategory_codes?.includes('WINE_BY_GLASS') || 
           (p.subcategory && p.subcategory.includes('Wine by Glass'))
         );
       } else {
@@ -1632,13 +1631,13 @@ export class MenuComponent implements OnInit {
         });
       }
     }
-
+    
     // Ensure all products have _source field for proper tracking
     filtered = filtered.map(p => ({
       ...p,
       _source: p._source || 'unknown'
     }));
-
+    
     this.filteredProducts.set(filtered);
   }
 
@@ -1725,24 +1724,24 @@ export class MenuComponent implements OnInit {
     const productKey = this.getProductKey(product);
     this.cart.update(items => {
       const existing = items.find(i => this.getProductKey(i.product) === productKey);
-      if (existing) {
-        return items.map(i => this.getProductKey(i.product) === productKey ? { ...i, quantity: i.quantity + 1 } : i);
+      if (existing) { 
+        return items.map(i => this.getProductKey(i.product) === productKey ? { ...i, quantity: i.quantity + 1 } : i); 
       }
       return [...items, { product, quantity: 1, notes: '' }];
     });
   }
 
-  incrementItem(item: CartItem) {
+  incrementItem(item: CartItem) { 
     const productKey = this.getProductKey(item.product);
-    this.cart.update(items => items.map(i => this.getProductKey(i.product) === productKey ? { ...i, quantity: i.quantity + 1 } : i));
+    this.cart.update(items => items.map(i => this.getProductKey(i.product) === productKey ? { ...i, quantity: i.quantity + 1 } : i)); 
   }
 
   decrementItem(item: CartItem) {
     const productKey = this.getProductKey(item.product);
-    if (item.quantity <= 1) {
-      this.cart.update(items => items.filter(i => this.getProductKey(i.product) !== productKey));
-    } else {
-      this.cart.update(items => items.map(i => this.getProductKey(i.product) === productKey ? { ...i, quantity: i.quantity - 1 } : i));
+    if (item.quantity <= 1) { 
+      this.cart.update(items => items.filter(i => this.getProductKey(i.product) !== productKey)); 
+    } else { 
+      this.cart.update(items => items.map(i => this.getProductKey(i.product) === productKey ? { ...i, quantity: i.quantity - 1 } : i)); 
     }
   }
 
@@ -1754,12 +1753,12 @@ export class MenuComponent implements OnInit {
   }
 
   getStatusLabel(status: string): string {
-    const labels: Record<string, string> = {
-      pending: 'Pending',
-      preparing: 'Preparing',
-      ready: 'Ready',
+    const labels: Record<string, string> = { 
+      pending: 'Pending', 
+      preparing: 'Preparing', 
+      ready: 'Ready', 
       partially_delivered: 'Partially Delivered',
-      paid: 'Paid',
+      paid: 'Paid', 
       completed: 'Done',
       cancelled: 'Cancelled'
     };
@@ -1794,15 +1793,15 @@ export class MenuComponent implements OnInit {
   }
 
   submitOrder() {
-    const items: OrderItemCreate[] = this.cart().map(item => ({
-      product_id: item.product.id!,
-      quantity: item.quantity,
+    const items: OrderItemCreate[] = this.cart().map(item => ({ 
+      product_id: item.product.id!, 
+      quantity: item.quantity, 
       notes: item.notes || undefined,
       source: item.product._source || undefined  // Include source to help backend identify correct product
     }));
     this.submitting.set(true);
-    this.api.submitOrder(this.tableToken, {
-      items,
+    this.api.submitOrder(this.tableToken, { 
+      items, 
       notes: this.orderNotes || undefined,
       session_id: this.sessionId,
       customer_name: this.customerName() || undefined
@@ -1810,18 +1809,18 @@ export class MenuComponent implements OnInit {
       next: (response: any) => {
         const orderId = response.order_id;
         const isNewOrder = response.status === 'created';
-
+        
         // Validate session_id matches (security check)
         if (response.session_id && response.session_id !== this.sessionId) {
           console.warn('Session ID mismatch - order may belong to different session');
         }
-
+        
         // Update customer name if returned from backend
         if (response.customer_name && response.customer_name !== this.customerName()) {
           this.customerName.set(response.customer_name);
           localStorage.setItem(`customer_name_${this.tableToken}`, response.customer_name);
         }
-
+        
         // Clear cart and show success message
         this.cart.set([]);
         this.orderNotes = '';
@@ -1830,7 +1829,7 @@ export class MenuComponent implements OnInit {
         setTimeout(() => this.showSuccessToast.set(false), 3000);
         this.ordersExpanded.set(true);
         this.submitting.set(false);
-
+        
         // Reload order from backend to get proper itemId values for newly added items
         // This ensures items are immediately editable without requiring a page reload
         this.loadStoredOrders();
@@ -1928,12 +1927,12 @@ export class MenuComponent implements OnInit {
     if (!confirm('Are you sure you want to remove this item from your order?')) {
       return;
     }
-
+    
     // Find the order item to get product ID for cart update
     const currentOrder = this.placedOrders().find(o => o.id === orderId);
     const itemToRemove = currentOrder?.items.find(item => item.itemId === itemId);
     const productId = itemToRemove?.product.id;
-
+    
     // Use itemId directly (now always available after loadStoredOrders fix)
     this.api.removeOrderItem(this.tableToken, orderId, itemId, this.sessionId).subscribe({
       next: (removeResponse: any) => {
@@ -1961,13 +1960,13 @@ export class MenuComponent implements OnInit {
     if (order.status === 'paid' || order.status === 'completed' || order.status === 'cancelled') {
       return false;
     }
-
+    
     // 2. Any item is not pending (preparing, ready, or delivered)
     const hasNonPendingItems = order.items.some(item => {
       const itemStatus = item.status || 'pending';
       return itemStatus !== 'pending' && itemStatus !== 'cancelled';
     });
-
+    
     return !hasNonPendingItems;
   }
 
@@ -1975,7 +1974,7 @@ export class MenuComponent implements OnInit {
     if (!confirm('Are you sure you want to cancel this entire order?')) {
       return;
     }
-
+    
     this.api.cancelOrder(this.tableToken, orderId, this.sessionId).subscribe({
       next: () => {
         // Clear the order from localStorage
