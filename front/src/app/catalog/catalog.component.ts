@@ -233,34 +233,95 @@ import { TranslateModule } from '@ngx-translate/core';
     </app-sidebar>
   `,
   styles: [`
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: var(--space-5);
+      flex-wrap: wrap;
+      gap: var(--space-2);
+    }
+
+    .page-header h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: var(--color-text);
+      margin: 0;
+    }
+
     .subtitle {
-      color: #666;
-      margin-top: 0.5rem;
-      font-size: 0.9rem;
+      color: var(--color-text-muted);
+      margin-top: var(--space-1);
+      font-size: 0.875rem;
     }
 
     .filters-card {
-      background: white;
-      border-radius: 8px;
-      padding: 1.5rem;
-      margin-bottom: 2rem;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      display: flex;
+      gap: var(--space-3);
+      margin-bottom: var(--space-5);
+      flex-wrap: wrap;
+      align-items: flex-end;
+    }
+
+    .form-row {
+      display: flex;
+      gap: var(--space-3);
+      flex-wrap: wrap;
+      flex: 1;
+    }
+
+    .form-group {
+      flex: 1;
+      min-width: 150px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: var(--space-2);
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--color-text);
+    }
+
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      padding: var(--space-3);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      font-size: 0.9375rem;
+      background: var(--color-surface);
+      color: var(--color-text);
+    }
+
+    .form-group input:focus,
+    .form-group select:focus {
+      outline: none;
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 3px var(--color-primary-light);
+    }
+
+    .form-group input:disabled,
+    .form-group select:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      background: var(--color-bg);
     }
 
     .catalog-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-      gap: 1.5rem;
+      gap: var(--space-4);
     }
 
     .catalog-card {
-      background: white;
-      border-radius: 8px;
-      padding: 1.5rem;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: var(--space-5);
       display: flex;
       flex-direction: column;
-      gap: 1rem;
+      gap: var(--space-3);
       overflow: hidden;
     }
 
@@ -268,12 +329,12 @@ import { TranslateModule } from '@ngx-translate/core';
       width: 100%;
       height: 200px;
       overflow: hidden;
-      border-radius: 8px;
-      background: white;
+      border-radius: var(--radius-md);
+      background: var(--color-surface);
       display: flex;
       align-items: center;
       justify-content: center;
-      margin: -1.5rem -1.5rem 1rem -1.5rem;
+      margin: calc(-1 * var(--space-5)) calc(-1 * var(--space-5)) var(--space-3) calc(-1 * var(--space-5));
       flex-shrink: 0;
     }
 
@@ -290,33 +351,34 @@ import { TranslateModule } from '@ngx-translate/core';
       display: flex;
       justify-content: space-between;
       align-items: start;
-      gap: 1rem;
+      gap: var(--space-3);
     }
 
     .catalog-header h3 {
       margin: 0;
-      font-size: 1.2rem;
+      font-size: 1.125rem;
+      color: var(--color-text);
       flex: 1;
     }
 
     .brand-badge {
-      background: #f0f0f0;
-      padding: 0.25rem 0.75rem;
-      border-radius: 4px;
-      font-size: 0.85rem;
-      color: #666;
+      background: var(--color-bg);
+      padding: var(--space-1) var(--space-3);
+      border-radius: var(--radius-sm);
+      font-size: 0.8125rem;
+      color: var(--color-text-muted);
     }
 
     .catalog-origin {
-      color: #666;
-      font-size: 0.85rem;
-      margin: 0.25rem 0;
+      color: var(--color-text-muted);
+      font-size: 0.8125rem;
+      margin: var(--space-1) 0;
       font-style: italic;
     }
 
     .catalog-description {
-      color: #666;
-      font-size: 0.9rem;
+      color: var(--color-text-muted);
+      font-size: 0.875rem;
       margin: 0;
       line-height: 1.5;
     }
@@ -324,65 +386,65 @@ import { TranslateModule } from '@ngx-translate/core';
     .catalog-details {
       display: flex;
       flex-wrap: wrap;
-      gap: 0.5rem;
-      margin: 0.75rem 0;
+      gap: var(--space-2);
+      margin: var(--space-3) 0;
     }
 
     .detail-badge {
-      background: #f0f0f0;
-      padding: 0.25rem 0.75rem;
+      background: var(--color-bg);
+      padding: var(--space-1) var(--space-3);
       border-radius: 12px;
-      font-size: 0.8rem;
-      color: #555;
+      font-size: 0.75rem;
+      color: var(--color-text-muted);
       font-weight: 500;
     }
 
     .catalog-aromas,
     .catalog-elaboration {
-      font-size: 0.85rem;
-      color: #666;
-      margin-top: 0.5rem;
+      font-size: 0.8125rem;
+      color: var(--color-text-muted);
+      margin-top: var(--space-2);
       line-height: 1.4;
     }
 
     .catalog-aromas strong,
     .catalog-elaboration strong {
-      color: #333;
+      color: var(--color-text);
       font-weight: 600;
     }
 
     .price-comparison {
-      border-top: 1px solid #eee;
-      padding-top: 1rem;
+      border-top: 1px solid var(--color-border);
+      padding-top: var(--space-4);
     }
 
     .price-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 0.75rem;
+      margin-bottom: var(--space-3);
     }
 
     .price-label {
       font-weight: 600;
-      color: #333;
+      color: var(--color-text);
     }
 
     .price-range {
-      color: #2563eb;
+      color: var(--color-primary);
       font-weight: 600;
     }
 
     .providers-list {
       display: flex;
       flex-direction: column;
-      gap: 0.5rem;
+      gap: var(--space-2);
     }
 
     .provider-item {
-      padding: 0.5rem;
-      background: #f9fafb;
-      border-radius: 4px;
+      padding: var(--space-2);
+      background: var(--color-bg);
+      border-radius: var(--radius-sm);
     }
 
     .provider-info {
@@ -393,99 +455,148 @@ import { TranslateModule } from '@ngx-translate/core';
 
     .provider-name {
       font-weight: 500;
-      color: #333;
+      color: var(--color-text);
     }
 
     .provider-price {
-      color: #2563eb;
+      color: var(--color-primary);
       font-weight: 600;
     }
 
     .provider-meta {
-      font-size: 0.85rem;
-      color: #666;
-      margin-top: 0.25rem;
+      font-size: 0.8125rem;
+      color: var(--color-text-muted);
+      margin-top: var(--space-1);
     }
 
     .no-providers {
-      color: #999;
+      color: var(--color-text-muted);
       font-style: italic;
       text-align: center;
-      padding: 1rem;
+      padding: var(--space-4);
     }
 
     .catalog-actions {
       margin-top: auto;
-      padding-top: 1rem;
-      border-top: 1px solid #eee;
+      padding-top: var(--space-4);
+      border-top: 1px solid var(--color-border);
     }
 
     .modal-overlay {
       position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0,0,0,0.5);
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
       display: flex;
       align-items: center;
       justify-content: center;
-      z-index: 1000;
+      z-index: 200;
     }
 
     .modal-content {
-      background: white;
-      border-radius: 8px;
+      background: var(--color-surface);
+      border-radius: var(--radius-lg);
       width: 90%;
       max-width: 500px;
       max-height: 90vh;
       overflow-y: auto;
+      box-shadow: var(--shadow-lg);
     }
 
     .modal-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 1.5rem;
-      border-bottom: 1px solid #eee;
+      padding: var(--space-5);
+      border-bottom: 1px solid var(--color-border);
     }
 
     .modal-header h3 {
       margin: 0;
+      font-size: 1.125rem;
+      color: var(--color-text);
     }
 
     .modal-body {
-      padding: 1.5rem;
+      padding: var(--space-5);
     }
 
     .modal-actions {
       display: flex;
-      gap: 1rem;
+      gap: var(--space-3);
       justify-content: flex-end;
-      padding: 1.5rem;
-      border-top: 1px solid #eee;
+      padding: var(--space-5);
+      border-top: 1px solid var(--color-border);
     }
 
     .hint {
-      color: #666;
-      font-size: 0.85rem;
-      margin-top: 0.25rem;
+      color: var(--color-text-muted);
+      font-size: 0.8125rem;
+      margin-top: var(--space-1);
       display: block;
+    }
+
+    .loading {
+      text-align: center;
+      padding: var(--space-8);
+      color: var(--color-text-muted);
+    }
+
+    .error-banner {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(220, 38, 38, 0.1);
+      color: var(--color-error);
+      padding: var(--space-3) var(--space-4);
+      border-radius: var(--radius-md);
+      margin-bottom: var(--space-4);
     }
 
     .empty-state {
       text-align: center;
-      padding: 3rem;
-      color: #666;
+      padding: var(--space-8);
+      background: var(--color-surface);
+      border: 1px dashed var(--color-border);
+      border-radius: var(--radius-lg);
+      .empty-icon { color: var(--color-text-muted); margin-bottom: var(--space-4); }
+      h3 { margin: 0 0 var(--space-2); font-size: 1.125rem; color: var(--color-text); }
+      p { margin: 0 0 var(--space-4); color: var(--color-text-muted); }
     }
 
-    .btn-danger {
-      background: var(--color-error);
-      color: white;
-      &:hover:not(:disabled) {
-        background: #b91c1c;
-      }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-3) var(--space-4);
+      border: none;
+      border-radius: var(--radius-md);
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
     }
+
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .btn-primary { background: var(--color-primary); color: white; }
+    .btn-primary:hover:not(:disabled) { background: var(--color-primary-hover); }
+
+    .btn-secondary { background: var(--color-bg); color: var(--color-text); border: 1px solid var(--color-border); }
+    .btn-secondary:hover:not(:disabled) { background: var(--color-border); }
+
+    .btn-danger { background: var(--color-error); color: white; }
+    .btn-danger:hover:not(:disabled) { background: #b91c1c; }
+
+    .icon-btn {
+      background: none;
+      border: none;
+      padding: var(--space-2);
+      border-radius: var(--radius-sm);
+      color: var(--color-text-muted);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .icon-btn:hover { background: var(--color-bg); color: var(--color-text); }
   `]
 })
 export class CatalogComponent implements OnInit {
@@ -497,15 +608,15 @@ export class CatalogComponent implements OnInit {
   categories = signal<string[]>([]);
   categoriesMap = signal<Record<string, string[]>>({});
   tenantProducts = signal<TenantProduct[]>([]);
-  
+
   selectedCategory = signal<string>('');
   selectedSubcategory = signal<string>('');
   searchTerm = signal<string>('');
-  
+
   selectedItem = signal<CatalogItem | null>(null);
   adding = signal(false);
   removing = signal(false);
-  
+
   addFormData = {
     name: '',
     providerProductId: null as number | null,
@@ -525,7 +636,7 @@ export class CatalogComponent implements OnInit {
   loadCatalog() {
     this.loading.set(true);
     this.error.set('');
-    
+
     this.apiService.getCatalog(
       this.selectedCategory() || undefined,
       this.selectedSubcategory() || undefined,
@@ -637,8 +748,8 @@ export class CatalogComponent implements OnInit {
   getSelectedProviderPrice(): number | null {
     const item = this.selectedItem();
     if (!item || !this.addFormData.providerProductId) return null;
-    
-    const provider = item.providers.find(p => 
+
+    const provider = item.providers.find(p =>
       p.provider_product_id === this.addFormData.providerProductId
     );
     return provider?.price_cents || null;
