@@ -9,6 +9,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
+# Create upload directories (volume mount target)
+RUN mkdir -p /app/uploads/providers
+
 # Expose port
 EXPOSE 8020
 

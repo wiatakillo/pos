@@ -23,6 +23,7 @@ Examples:
     ./run.sh            Start in production mode (build and serve)
     ./run.sh -dev       Start in development mode (hot reload)
     ./run.sh --clean    Remove all containers and volumes
+    --fix-perm          Fix file permissions in back/uploads
 
 Development Mode:
     - Frontend runs with 'ng serve' (hot reload enabled)
@@ -87,6 +88,31 @@ remove_all() {
     exit 0
 }
 
+# Function to fix upload permissions
+fix_permissions() {
+    echo "🔧 Fixing permissions for back/uploads..."
+    if [ -d "back/uploads" ]; then
+        # Check for any files owned by root (UID 0) recursively
+        ROOT_OWNED=$(find back/uploads -user 0 2>/dev/null | head -1)
+        if [ -n "$ROOT_OWNED" ]; then
+            echo "🔑 Found files owned by root. Fixing ownership (may prompt for sudo password)..."
+            sudo chown -R "$USER:$USER" back/uploads || {
+                echo "❌ Failed to change ownership. Please run: sudo chown -R \$USER:\$USER back/uploads"
+                exit 1
+            }
+            echo "✅ Permissions fixed!"
+        else
+            echo "👤 back/uploads is already owned by $USER"
+            echo "✅ No permission issues found!"
+        fi
+    else
+        echo "📁 Creating back/uploads/providers with correct ownership..."
+        mkdir -p back/uploads/providers
+        echo "✅ Directories created!"
+    fi
+    exit 0
+}
+
 # Parse command line arguments
 DEV_MODE=false
 ENV_FILE=""
@@ -102,6 +128,9 @@ while [[ $# -gt 0 ]]; do
             ;;
         -c|--clean|--remove-all)
             remove_all
+            ;;
+        --fix-perm|--fix-permissions)
+            fix_permissions
             ;;
         *)
             echo "❌ Unknown option: $1"
@@ -121,6 +150,18 @@ if [ ! -f "config.env" ]; then
 fi
 
 ENV_FILE="--env-file config.env"
+
+# Export UID and GID for Docker Compose (using different names because UID is readonly in bash)
+# This ensures the backend container runs as the host user
+export DOCKER_UID=$(id -u)
+export DOCKER_GID=$(id -g)
+
+# Pre-create upload directories with correct ownership
+# This prevents Docker from creating them as root
+if [ ! -d "back/uploads/providers" ]; then
+    echo "📁 Pre-creating back/uploads/providers directory..."
+    mkdir -p back/uploads/providers
+fi
 
 # Determine which compose file to use
 if [ "$DEV_MODE" = true ]; then

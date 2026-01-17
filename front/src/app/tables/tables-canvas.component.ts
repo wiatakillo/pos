@@ -4,6 +4,7 @@ import { RouterLink } from '@angular/router';
 import { LowerCasePipe } from '@angular/common';
 import { ApiService, Floor, CanvasTable } from '../services/api.service';
 import { SidebarComponent } from '../shared/sidebar.component';
+import { ConfirmationModalComponent } from '../shared/confirmation-modal.component';
 import { TranslateModule } from '@ngx-translate/core';
 
 interface TableShape {
@@ -18,7 +19,7 @@ interface TableShape {
 @Component({
   selector: 'app-tables-canvas',
   standalone: true,
-  imports: [FormsModule, SidebarComponent, RouterLink, TranslateModule, LowerCasePipe],
+  imports: [FormsModule, SidebarComponent, RouterLink, TranslateModule, LowerCasePipe, ConfirmationModalComponent],
   template: `
     <app-sidebar>
       <div class="canvas-container">
@@ -96,7 +97,11 @@ interface TableShape {
               </svg>
             </button>
           }
-          <button class="floor-tab add-table-btn" (click)="showAddTableModal = true" [title]="'TABLES.ADD_TABLE' | translate">
+          <button 
+            class="floor-tab add-table-btn" 
+            (click)="showAddTableModal = true" 
+            [disabled]="floors().length === 0"
+            [title]="'TABLES.ADD_TABLE' | translate">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="3" y="3" width="18" height="18" rx="2"/>
               <line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
@@ -427,6 +432,19 @@ interface TableShape {
               </div>
             </div>
           </div>
+        }
+
+        <!-- Confirmation Modal -->
+        @if (confirmationModal().show) {
+          <app-confirmation-modal
+            [title]="confirmationModal().title"
+            [message]="confirmationModal().message"
+            [confirmText]="confirmationModal().confirmText"
+            [cancelText]="confirmationModal().cancelText"
+            [confirmBtnClass]="confirmationModal().confirmBtnClass"
+            (confirm)="onConfirmationConfirm()"
+            (cancel)="onConfirmationCancel()"
+          ></app-confirmation-modal>
         }
       </div>
     </app-sidebar>
@@ -1129,6 +1147,25 @@ export class TablesCanvasComponent implements OnInit, OnDestroy {
   showAddTableModal = false;
   selectedShape: TableShape | null = null;
 
+  // Confirmation Modal State
+  confirmationModal = signal<{
+    show: boolean;
+    title: string;
+    message: string;
+    confirmText: string;
+    cancelText: string;
+    confirmBtnClass: string;
+    action: 'deleteFloor' | 'deleteTable' | null;
+  }>({
+    show: false,
+    title: '',
+    message: '',
+    confirmText: 'COMMON.YES',
+    cancelText: 'COMMON.NO',
+    confirmBtnClass: 'btn-primary',
+    action: null
+  });
+
   canvasWidth = 1200;
   canvasHeight = 800;
 
@@ -1253,17 +1290,30 @@ export class TablesCanvasComponent implements OnInit, OnDestroy {
     const id = this.selectedFloorId();
     if (!id) return;
 
-    if (confirm('Delete this floor? Tables will be unassigned.')) {
-      this.error.set('');
-      this.api.deleteFloor(id).subscribe({
-        next: () => {
-          this.floors.update(floors => floors.filter(f => f.id !== id));
-          const remaining = this.floors();
-          this.selectedFloorId.set(remaining.length > 0 ? remaining[0].id! : null);
-        },
-        error: err => this.error.set(err.error?.detail || 'Failed to delete floor')
-      });
-    }
+    this.confirmationModal.set({
+      show: true,
+      title: 'TABLES.DELETE_FLOOR',
+      message: 'TABLES.DELETE_FLOOR_CONFIRM',
+      confirmText: 'COMMON.DELETE',
+      cancelText: 'COMMON.CANCEL',
+      confirmBtnClass: 'btn-danger',
+      action: 'deleteFloor'
+    });
+  }
+
+  private confirmDeleteFloor() {
+    const id = this.selectedFloorId();
+    if (!id) return;
+
+    this.error.set('');
+    this.api.deleteFloor(id).subscribe({
+      next: () => {
+        this.floors.update(floors => floors.filter(f => f.id !== id));
+        const remaining = this.floors();
+        this.selectedFloorId.set(remaining.length > 0 ? remaining[0].id! : null);
+      },
+      error: err => this.error.set(err.error?.detail || 'Failed to delete floor')
+    });
   }
 
   getTableNumber(table: CanvasTable): string {
@@ -1348,7 +1398,7 @@ export class TablesCanvasComponent implements OnInit, OnDestroy {
 
   addTableFromModal() {
     this.error.set('');
-    if (!this.selectedShape || !this.selectedFloorId()) return;
+    if (!this.selectedShape || !this.selectedFloorId() || this.floors().length === 0) return;
 
     const shape = this.selectedShape;
     const tableName = `Table ${this.tables().length + 1}`;
@@ -1611,16 +1661,43 @@ export class TablesCanvasComponent implements OnInit, OnDestroy {
     const table = this.selectedTable();
     if (!table?.id) return;
 
-    if (confirm(`Delete ${table.name}?`)) {
-      this.error.set('');
-      this.api.deleteTable(table.id).subscribe({
-        next: () => {
-          this.tables.update(tables => tables.filter(t => t.id !== table.id));
-          this.selectedTable.set(null);
-        },
-        error: err => this.error.set(err.error?.detail || 'Failed to delete table')
-      });
+    this.confirmationModal.set({
+      show: true,
+      title: 'TABLES.DELETE_TABLE',
+      message: 'TABLES.DELETE_TABLE_CONFIRM',
+      confirmText: 'COMMON.DELETE',
+      cancelText: 'COMMON.CANCEL',
+      confirmBtnClass: 'btn-danger',
+      action: 'deleteTable'
+    });
+  }
+
+  private confirmDeleteTable() {
+    const table = this.selectedTable();
+    if (!table?.id) return;
+
+    this.error.set('');
+    this.api.deleteTable(table.id).subscribe({
+      next: () => {
+        this.tables.update(tables => tables.filter(t => t.id !== table.id));
+        this.selectedTable.set(null);
+      },
+      error: err => this.error.set(err.error?.detail || 'Failed to delete table')
+    });
+  }
+
+  onConfirmationConfirm() {
+    const action = this.confirmationModal().action;
+    if (action === 'deleteFloor') {
+      this.confirmDeleteFloor();
+    } else if (action === 'deleteTable') {
+      this.confirmDeleteTable();
     }
+    this.onConfirmationCancel();
+  }
+
+  onConfirmationCancel() {
+    this.confirmationModal.update(m => ({ ...m, show: false, action: null }));
   }
 
   saveAllPositions() {

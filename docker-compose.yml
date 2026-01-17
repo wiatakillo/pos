@@ -3,6 +3,7 @@ services:
     build: ./back
     container_name: pos-back
     restart: unless-stopped
+    user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
     expose:
       - "8020"
     environment:
