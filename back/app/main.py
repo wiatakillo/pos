@@ -18,13 +18,18 @@ from fastapi.staticfiles import StaticFiles
 from sqlmodel import Session, select
 
 from . import models, security
-from .db import check_db_connection, create_db_and_tables, get_session
+from .db import check_db_connection, create_db_and_tables, get_session, engine
 from .settings import settings
 from .inventory_routes import router as inventory_router
 from .inventory_service import deduct_inventory_for_order
 from . import inventory_models
 from .translation_service import TranslationService
 from .messages import get_message
+from .permissions import PermissionService, Permissions
+from .seeds.roles import seed_roles_for_tenant, seed_all_tenants
+from .roles_routes import router as roles_router
+from .users_routes import router as users_router
+from .security import PermissionChecker
 
 # Configure logging
 logging.basicConfig(
@@ -175,6 +180,8 @@ app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
 
 # Register Inventory API router
 app.include_router(inventory_router, prefix="/inventory", tags=["Inventory"])
+app.include_router(roles_router, tags=["Roles"])
+app.include_router(users_router, tags=["Users"])
 
 
 # ============ IMAGE OPTIMIZATION ============
@@ -344,6 +351,13 @@ def on_startup() -> None:
         # Log but don't fail startup - migrations can be run manually
         logger.warning(f"Migration check failed: {e}", exc_info=True)
 
+    # Seed roles
+    try:
+        with Session(engine) as session:
+            seed_all_tenants(session)
+    except Exception as e:
+        logger.warning(f"Role seeding failed: {e}", exc_info=True)
+
 
 @app.get("/health")
 def health() -> dict:
@@ -397,12 +411,17 @@ def register(
     session.commit()
     session.refresh(tenant)
 
+    # Seed roles for new tenant
+    roles = seed_roles_for_tenant(session, tenant.id)
+    admin_role = roles.get("Admin")
+
     hashed_password = security.get_password_hash(password)
     user = models.User(
         email=email,
         hashed_password=hashed_password,
         full_name=full_name,
         tenant_id=tenant.id,
+        role_id=admin_role.id if admin_role else None,
     )
     session.add(user)
     session.commit()
@@ -455,11 +474,22 @@ def logout():
     return response
 
 
-@app.get("/users/me")
+@app.get("/users/me", response_model=models.UserReadWithPermissions)
 def read_users_me(
     current_user: Annotated[models.User, Depends(security.get_current_user)],
-) -> models.User:
-    return current_user
+    session: Session = Depends(get_session),
+) -> models.UserReadWithPermissions:
+    permissions = PermissionService.get_user_permissions(session, current_user)
+
+    # Get role name
+    role_name = current_user.role.name if current_user.role else None
+
+    # Create response
+    user_dict = current_user.model_dump()
+    user_dict["permissions"] = list(permissions)
+    user_dict["role_name"] = role_name
+
+    return models.UserReadWithPermissions(**user_dict)
 
 
 # ============ TRANSLATIONS ============
@@ -469,7 +499,9 @@ def read_users_me(
 def get_translations_for_entity(
     entity_type: str,
     entity_id: int,
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.SETTINGS_READ))
+    ],
     session: Session = Depends(get_session),
 ) -> dict:
     """Get all translations for a specific entity."""
@@ -517,7 +549,9 @@ def update_translations_for_entity(
     entity_type: str,
     entity_id: int,
     translations: Dict[str, Dict[str, str]],  # {field: {lang: text}}
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.SETTINGS_MANAGE))
+    ],
     session: Session = Depends(get_session),
 ) -> dict:
     """Update translations for a specific entity."""
@@ -577,7 +611,9 @@ def update_translations_for_entity(
 
 @app.get("/tenant/settings")
 def get_tenant_settings(
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.SETTINGS_READ))
+    ],
     session: Session = Depends(get_session),
 ) -> dict:
     """Get tenant/business profile settings."""
@@ -614,7 +650,9 @@ def get_tenant_settings(
 @app.put("/tenant/settings")
 def update_tenant_settings(
     tenant_update: models.TenantUpdate,
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.SETTINGS_MANAGE))
+    ],
     session: Session = Depends(get_session),
 ) -> dict:
     """Update tenant/business profile settings."""
@@ -744,7 +782,9 @@ def update_tenant_settings(
 @app.post("/tenant/logo")
 async def upload_tenant_logo(
     file: Annotated[UploadFile, File()],
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.SETTINGS_MANAGE))
+    ],
     session: Session = Depends(get_session),
 ) -> models.Tenant:
     """Upload a logo for the tenant/business."""
@@ -813,7 +853,9 @@ async def upload_tenant_logo(
 
 @app.get("/products")
 def list_products(
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.PRODUCTS_READ))
+    ],
     session: Session = Depends(get_session),
 ) -> list[models.Product]:
     """List all products for the tenant.
@@ -917,7 +959,9 @@ def list_products(
 @app.post("/products")
 def create_product(
     product: models.Product,
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.PRODUCTS_MANAGE))
+    ],
     session: Session = Depends(get_session),
 ) -> models.Product:
     product.tenant_id = current_user.tenant_id
@@ -931,7 +975,9 @@ def create_product(
 def update_product(
     product_id: int,
     product_update: models.ProductUpdate,
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.PRODUCTS_MANAGE))
+    ],
     session: Session = Depends(get_session),
 ) -> models.Product:
     product = session.exec(
@@ -964,7 +1010,9 @@ def update_product(
 @app.delete("/products/{product_id}")
 def delete_product(
     product_id: int,
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.PRODUCTS_MANAGE))
+    ],
     session: Session = Depends(get_session),
 ) -> dict:
     product = session.exec(
@@ -986,7 +1034,9 @@ def delete_product(
 async def upload_product_image(
     product_id: int,
     file: Annotated[UploadFile, File()],
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.PRODUCTS_MANAGE))
+    ],
     session: Session = Depends(get_session),
 ) -> models.Product:
     """Upload an image for a product. Validates file type and size."""
@@ -1058,7 +1108,9 @@ async def upload_product_image(
 
 @app.get("/providers")
 def list_providers(
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.INVENTORY_READ))
+    ],
     session: Session = Depends(get_session),
     active_only: bool = True,
 ) -> list[models.Provider]:
@@ -1072,7 +1124,9 @@ def list_providers(
 @app.get("/providers/{provider_id}")
 def get_provider(
     provider_id: int,
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.INVENTORY_READ))
+    ],
     session: Session = Depends(get_session),
 ) -> models.Provider:
     """Get a specific provider."""
@@ -1087,7 +1141,9 @@ def get_provider(
 @app.post("/providers")
 def create_provider(
     provider: models.Provider,
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.INVENTORY_MANAGE))
+    ],
     session: Session = Depends(get_session),
 ) -> models.Provider:
     """Create a new provider (admin function)."""
@@ -1102,7 +1158,9 @@ def create_provider(
 
 @app.get("/catalog")
 async def list_catalog(
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.PRODUCTS_READ))
+    ],
     session: Session = Depends(get_session),
     category: str | None = None,
     subcategory: str | None = None,
@@ -1236,7 +1294,9 @@ async def list_catalog(
 
 @app.get("/catalog/categories")
 async def get_catalog_categories(
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.PRODUCTS_READ))
+    ],
     session: Session = Depends(get_session),
 ) -> dict:
     """Get all categories and subcategories from catalog."""
@@ -1256,7 +1316,9 @@ async def get_catalog_categories(
 @app.get("/catalog/{catalog_id}")
 async def get_catalog_item(
     catalog_id: int,
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.PRODUCTS_READ))
+    ],
     session: Session = Depends(get_session),
 ) -> dict:
     """Get a specific catalog item with price comparison."""
@@ -1367,7 +1429,9 @@ async def get_catalog_item(
 @app.get("/providers/{provider_id}/products")
 def list_provider_products(
     provider_id: int,
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.INVENTORY_READ))
+    ],
     session: Session = Depends(get_session),
 ) -> list[models.ProviderProduct]:
     """List all products from a specific provider."""
@@ -1389,7 +1453,9 @@ def list_provider_products(
 
 @app.get("/tenant-products")
 def list_tenant_products(
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.PRODUCTS_READ))
+    ],
     session: Session = Depends(get_session),
     active_only: bool = True,
 ) -> list[dict]:
@@ -1454,7 +1520,9 @@ def list_tenant_products(
 @app.post("/tenant-products")
 def create_tenant_product(
     product_data: models.TenantProductCreate,
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.PRODUCTS_MANAGE))
+    ],
     session: Session = Depends(get_session),
 ) -> models.TenantProduct:
     """Add a product from catalog to tenant's menu.
@@ -1635,7 +1703,9 @@ def create_tenant_product(
 def update_tenant_product(
     tenant_product_id: int,
     product_update: models.TenantProductUpdate,
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.PRODUCTS_MANAGE))
+    ],
     session: Session = Depends(get_session),
 ) -> models.TenantProduct:
     """Update a tenant product."""
@@ -1665,7 +1735,9 @@ def update_tenant_product(
 @app.delete("/tenant-products/{tenant_product_id}")
 def delete_tenant_product(
     tenant_product_id: int,
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.PRODUCTS_MANAGE))
+    ],
     session: Session = Depends(get_session),
 ) -> dict:
     """Delete a tenant product."""
@@ -1689,7 +1761,9 @@ def delete_tenant_product(
 
 @app.get("/floors")
 def list_floors(
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.TABLES_READ))
+    ],
     session: Session = Depends(get_session),
 ) -> list[models.Floor]:
     """List all floors for this tenant."""
@@ -1703,7 +1777,9 @@ def list_floors(
 @app.post("/floors")
 def create_floor(
     floor_data: models.FloorCreate,
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.TABLES_MANAGE))
+    ],
     session: Session = Depends(get_session),
 ) -> models.Floor:
     """Create a new floor/zone."""
@@ -1730,7 +1806,9 @@ def create_floor(
 def update_floor(
     floor_id: int,
     floor_update: models.FloorUpdate,
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.TABLES_MANAGE))
+    ],
     session: Session = Depends(get_session),
 ) -> models.Floor:
     """Update a floor."""
@@ -1758,7 +1836,9 @@ def update_floor(
 @app.delete("/floors/{floor_id}")
 def delete_floor(
     floor_id: int,
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.TABLES_MANAGE))
+    ],
     session: Session = Depends(get_session),
 ) -> dict:
     """Delete a floor. Tables on this floor will have floor_id set to null."""
@@ -1782,7 +1862,9 @@ def delete_floor(
 
 @app.get("/tables")
 def list_tables(
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.TABLES_READ))
+    ],
     session: Session = Depends(get_session),
 ) -> list[models.Table]:
     return session.exec(
@@ -1792,7 +1874,9 @@ def list_tables(
 
 @app.get("/tables/with-status")
 def list_tables_with_status(
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.TABLES_READ))
+    ],
     session: Session = Depends(get_session),
 ) -> list[dict]:
     """List tables with computed status based on active orders."""
@@ -1836,7 +1920,9 @@ def list_tables_with_status(
 @app.post("/tables")
 def create_table(
     table_data: models.TableCreate,
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.TABLES_MANAGE))
+    ],
     session: Session = Depends(get_session),
 ) -> models.Table:
     table = models.Table(
@@ -1854,7 +1940,9 @@ def create_table(
 def update_table(
     table_id: int,
     table_update: models.TableUpdate,
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.TABLES_MANAGE))
+    ],
     session: Session = Depends(get_session),
 ) -> models.Table:
     """Update table properties including canvas layout."""
@@ -1897,7 +1985,9 @@ def update_table(
 @app.delete("/tables/{table_id}")
 def delete_table(
     table_id: int,
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.TABLES_MANAGE))
+    ],
     session: Session = Depends(get_session),
 ) -> dict:
     table = session.exec(
@@ -2712,9 +2802,13 @@ def compute_order_status_from_items(items: list[models.OrderItem]) -> models.Ord
 
 @app.get("/orders")
 def list_orders(
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
-    include_removed: bool = Query(False, description="Include removed items in response"),
-    session: Session = Depends(get_session)
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.ORDERS_READ))
+    ],
+    include_removed: bool = Query(
+        False, description="Include removed items in response"
+    ),
+    session: Session = Depends(get_session),
 ) -> list[dict]:
     orders = session.exec(
         select(models.Order)
@@ -2791,7 +2885,9 @@ def list_orders(
 def update_order_status(
     order_id: int,
     status_update: models.OrderStatusUpdate,
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.ORDERS_UPDATE))
+    ],
     session: Session = Depends(get_session),
 ) -> dict:
     order = session.exec(
@@ -2853,8 +2949,10 @@ def update_order_status(
 def mark_order_paid(
     order_id: int,
     payment_data: models.OrderMarkPaid,
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
-    session: Session = Depends(get_session)
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.ORDERS_PAY))
+    ],
+    session: Session = Depends(get_session),
 ) -> dict:
     """Mark order as paid manually (for cash/terminal payments)."""
     order = session.exec(
@@ -2905,8 +3003,10 @@ def update_order_item_status(
     order_id: int,
     item_id: int,
     status_update: models.OrderItemStatusUpdate,
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
-    session: Session = Depends(get_session)
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.ORDERS_UPDATE))
+    ],
+    session: Session = Depends(get_session),
 ) -> dict:
     """Update individual order item status (restaurant staff)."""
     order = session.exec(
@@ -2975,8 +3075,10 @@ def update_order_item_status(
 def reset_item_status(
     order_id: int,
     item_id: int,
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
-    session: Session = Depends(get_session)
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.ORDERS_UPDATE))
+    ],
+    session: Session = Depends(get_session),
 ) -> dict:
     """Reset item status from preparing to pending (restaurant staff only)."""
     order = session.exec(
@@ -3049,8 +3151,10 @@ def cancel_order_item_staff(
     order_id: int,
     item_id: int,
     cancel_data: models.OrderItemCancel,
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
-    session: Session = Depends(get_session)
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.ORDERS_CANCEL))
+    ],
+    session: Session = Depends(get_session),
 ) -> dict:
     """Cancel order item (restaurant staff) - requires reason if item is ready."""
     order = session.exec(
@@ -3130,8 +3234,10 @@ def update_order_item_staff(
     order_id: int,
     item_id: int,
     item_update: models.OrderItemStaffUpdate,
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
-    session: Session = Depends(get_session)
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.ORDERS_UPDATE))
+    ],
+    session: Session = Depends(get_session),
 ) -> dict:
     """Update order item (restaurant staff) - can modify any item except delivered."""
     order = session.exec(
@@ -3214,9 +3320,13 @@ def update_order_item_staff(
 def remove_order_item_staff(
     order_id: int,
     item_id: int,
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
-    reason: str | None = Query(None, description="Required reason when removing ready items"),
-    session: Session = Depends(get_session)
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.ORDERS_CANCEL))
+    ],
+    reason: str | None = Query(
+        None, description="Required reason when removing ready items"
+    ),
+    session: Session = Depends(get_session),
 ) -> dict:
     """Remove order item (restaurant staff) - requires reason if item is ready."""
     order = session.exec(

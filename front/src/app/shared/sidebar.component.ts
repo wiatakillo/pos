@@ -5,11 +5,18 @@ import { ApiService, User } from '../services/api.service';
 import { environment } from '../../environments/environment';
 import { LanguagePickerComponent } from './language-picker.component';
 import { TranslateModule } from '@ngx-translate/core';
+import { HasPermissionDirective } from './has-permission.directive';
 
 @Component({
   selector: 'app-sidebar',
   standalone: true,
-  imports: [RouterLink, RouterLinkActive, LanguagePickerComponent, TranslateModule],
+  imports: [
+    RouterLink,
+    RouterLinkActive,
+    LanguagePickerComponent,
+    TranslateModule,
+    HasPermissionDirective,
+  ],
   template: `
     <div class="layout" [class.sidebar-open]="sidebarOpen()">
       <header class="mobile-header">
@@ -42,20 +49,20 @@ import { TranslateModule } from '@ngx-translate/core';
              </svg>
              <span>{{ 'NAV.HOME' | translate }}</span>
            </a>
-           <a routerLink="/products" routerLinkActive="active" class="nav-link" (click)="closeSidebar()">
+           <a *appHasPermission="'products:read'" routerLink="/products" routerLinkActive="active" class="nav-link" (click)="closeSidebar()">
              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/>
              </svg>
              <span>{{ 'NAV.PRODUCTS' | translate }}</span>
            </a>
-           <a routerLink="/catalog" routerLinkActive="active" class="nav-link" (click)="closeSidebar()">
+           <a *appHasPermission="'products:read'" routerLink="/catalog" routerLinkActive="active" class="nav-link" (click)="closeSidebar()">
              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                <path d="M4 19.5A2.5 2.5 0 016.5 17H20"/>
                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/>
              </svg>
              <span>{{ 'NAV.CATALOG' | translate }}</span>
            </a>
-           <a routerLink="/tables" routerLinkActive="active" class="nav-link" (click)="closeSidebar()">
+           <a *appHasPermission="'tables:read'" routerLink="/tables" routerLinkActive="active" class="nav-link" (click)="closeSidebar()">
              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                <rect x="3" y="3" width="7" height="7"/>
                <rect x="14" y="3" width="7" height="7"/>
@@ -64,7 +71,7 @@ import { TranslateModule } from '@ngx-translate/core';
              </svg>
              <span>{{ 'NAV.TABLES' | translate }}</span>
            </a>
-           <a routerLink="/orders" routerLinkActive="active" class="nav-link" (click)="closeSidebar()">
+           <a *appHasPermission="'orders:read'" routerLink="/orders" routerLinkActive="active" class="nav-link" (click)="closeSidebar()">
              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
                <polyline points="14,2 14,8 20,8"/>
@@ -75,7 +82,7 @@ import { TranslateModule } from '@ngx-translate/core';
              <span>{{ 'NAV.ORDERS' | translate }}</span>
            </a>
            <!-- Inventory Module -->
-           <div class="nav-section">
+           <div class="nav-section" *appHasPermission="'inventory:read'">
              <button class="nav-section-header" (click)="toggleInventory()">
                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                  <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
@@ -106,7 +113,7 @@ import { TranslateModule } from '@ngx-translate/core';
              }
            </div>
 
-            <a routerLink="/settings" routerLinkActive="active" class="nav-link" (click)="closeSidebar()">
+            <a *appHasPermission="['settings:read', 'users:read', 'roles:manage']" routerLink="/settings" routerLinkActive="active" class="nav-link" (click)="closeSidebar()">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="12" cy="12" r="3"/>
                 <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"/>

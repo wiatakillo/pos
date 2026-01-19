@@ -12,6 +12,7 @@ from sqlmodel import Session, select
 from .db import get_session
 from .models import User, Tenant
 from .settings import settings
+from .permissions import PermissionService
 
 # Context variable to store the current tenant_id for the request
 _tenant_id_ctx = ContextVar("tenant_id", default=None)
@@ -102,3 +103,20 @@ async def get_current_user(
         raise credentials_exception
         
     return user
+
+
+class PermissionChecker:
+    def __init__(self, required_permission: str):
+        self.required_permission = required_permission
+
+    def __call__(
+        self,
+        user: Annotated[User, Depends(get_current_user)],
+        session: Annotated[Session, Depends(get_session)],
+    ) -> User:
+        if not PermissionService.has_permission(session, user, self.required_permission):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Operation not permitted. Required: {self.required_permission}",
+            )
+        return user

@@ -19,7 +19,8 @@ from fastapi.responses import StreamingResponse
 from sqlmodel import Session, select
 
 from .db import get_session
-from .security import get_current_user
+from .security import get_current_user, PermissionChecker
+from .permissions import Permissions
 from . import models
 from .inventory_models import (
     InventoryBatch,
@@ -66,7 +67,9 @@ router = APIRouter()
 
 @router.get("/items", response_model=list[InventoryItemResponse])
 def list_inventory_items(
-    current_user: Annotated[models.User, Depends(get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.INVENTORY_READ))
+    ],
     session: Session = Depends(get_session),
     category: InventoryCategory | None = None,
     active_only: bool = True,
@@ -122,7 +125,9 @@ def list_inventory_items(
 @router.post("/items", response_model=InventoryItemResponse)
 def create_inventory_item(
     item_create: InventoryItemCreate,
-    current_user: Annotated[models.User, Depends(get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.INVENTORY_MANAGE))
+    ],
     session: Session = Depends(get_session),
 ):
     """Create a new inventory item"""
@@ -167,7 +172,9 @@ def create_inventory_item(
 @router.get("/items/{item_id}", response_model=InventoryItemResponse)
 def get_inventory_item(
     item_id: int,
-    current_user: Annotated[models.User, Depends(get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.INVENTORY_READ))
+    ],
     session: Session = Depends(get_session),
 ):
     """Get a single inventory item with details"""
@@ -199,7 +206,9 @@ def get_inventory_item(
 def update_inventory_item(
     item_id: int,
     item_update: InventoryItemUpdate,
-    current_user: Annotated[models.User, Depends(get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.INVENTORY_MANAGE))
+    ],
     session: Session = Depends(get_session),
 ):
     """Update an inventory item"""
@@ -253,7 +262,9 @@ def update_inventory_item(
 @router.delete("/items/{item_id}")
 def delete_inventory_item(
     item_id: int,
-    current_user: Annotated[models.User, Depends(get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.INVENTORY_MANAGE))
+    ],
     session: Session = Depends(get_session),
 ):
     """Soft delete an inventory item"""
@@ -275,7 +286,9 @@ def delete_inventory_item(
 def adjust_inventory_stock(
     item_id: int,
     adjustment: StockAdjustment,
-    current_user: Annotated[models.User, Depends(get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.INVENTORY_MANAGE))
+    ],
     session: Session = Depends(get_session),
 ):
     """Manual stock adjustment (add, subtract, or waste)"""
@@ -321,7 +334,9 @@ def adjust_inventory_stock(
 
 @router.get("/suppliers", response_model=list[Supplier])
 def list_suppliers(
-    current_user: Annotated[models.User, Depends(get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.INVENTORY_READ))
+    ],
     session: Session = Depends(get_session),
     active_only: bool = True,
 ):
@@ -342,7 +357,9 @@ def list_suppliers(
 @router.post("/suppliers", response_model=Supplier)
 def create_supplier(
     supplier_create: SupplierCreate,
-    current_user: Annotated[models.User, Depends(get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.INVENTORY_MANAGE))
+    ],
     session: Session = Depends(get_session),
 ):
     """Create a new supplier"""
@@ -359,7 +376,9 @@ def create_supplier(
 @router.get("/suppliers/{supplier_id}", response_model=Supplier)
 def get_supplier(
     supplier_id: int,
-    current_user: Annotated[models.User, Depends(get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.INVENTORY_READ))
+    ],
     session: Session = Depends(get_session),
 ):
     """Get a single supplier"""
@@ -375,7 +394,9 @@ def get_supplier(
 def update_supplier(
     supplier_id: int,
     supplier_update: SupplierUpdate,
-    current_user: Annotated[models.User, Depends(get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.INVENTORY_MANAGE))
+    ],
     session: Session = Depends(get_session),
 ):
     """Update a supplier"""
@@ -398,7 +419,9 @@ def update_supplier(
 @router.delete("/suppliers/{supplier_id}")
 def delete_supplier(
     supplier_id: int,
-    current_user: Annotated[models.User, Depends(get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.INVENTORY_MANAGE))
+    ],
     session: Session = Depends(get_session),
 ):
     """Soft delete a supplier"""
@@ -420,7 +443,9 @@ def delete_supplier(
 
 @router.get("/purchase-orders")
 def list_purchase_orders(
-    current_user: Annotated[models.User, Depends(get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.INVENTORY_READ))
+    ],
     session: Session = Depends(get_session),
     status: PurchaseOrderStatus | None = None,
     supplier_id: int | None = None,
@@ -470,7 +495,9 @@ def list_purchase_orders(
 @router.post("/purchase-orders")
 def create_purchase_order(
     po_create: PurchaseOrderCreate,
-    current_user: Annotated[models.User, Depends(get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.INVENTORY_MANAGE))
+    ],
     session: Session = Depends(get_session),
 ):
     """Create a new purchase order"""
@@ -536,7 +563,9 @@ def create_purchase_order(
 @router.get("/purchase-orders/{po_id}")
 def get_purchase_order(
     po_id: int,
-    current_user: Annotated[models.User, Depends(get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.INVENTORY_READ))
+    ],
     session: Session = Depends(get_session),
 ):
     """Get a purchase order with full details"""
@@ -589,7 +618,9 @@ def get_purchase_order(
 def update_purchase_order(
     po_id: int,
     po_update: PurchaseOrderUpdate,
-    current_user: Annotated[models.User, Depends(get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.INVENTORY_MANAGE))
+    ],
     session: Session = Depends(get_session),
 ):
     """Update a purchase order (only while in draft status)"""
@@ -620,7 +651,9 @@ def update_purchase_order(
 def update_purchase_order_status(
     po_id: int,
     new_status: PurchaseOrderStatus,
-    current_user: Annotated[models.User, Depends(get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.INVENTORY_MANAGE))
+    ],
     session: Session = Depends(get_session),
 ):
     """Change purchase order status"""
@@ -657,7 +690,9 @@ def update_purchase_order_status(
 def receive_purchase_order(
     po_id: int,
     receive_input: ReceiveGoodsInput,
-    current_user: Annotated[models.User, Depends(get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.INVENTORY_MANAGE))
+    ],
     session: Session = Depends(get_session),
 ):
     """Receive goods against a purchase order (GRN)"""
@@ -703,7 +738,9 @@ def receive_purchase_order(
 @router.delete("/purchase-orders/{po_id}")
 def cancel_purchase_order(
     po_id: int,
-    current_user: Annotated[models.User, Depends(get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.INVENTORY_MANAGE))
+    ],
     session: Session = Depends(get_session),
 ):
     """Cancel a purchase order (only if not yet received)"""
@@ -729,7 +766,9 @@ def cancel_purchase_order(
 @router.get("/purchase-orders/{po_id}/pdf")
 def get_purchase_order_pdf(
     po_id: int,
-    current_user: Annotated[models.User, Depends(get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.INVENTORY_READ))
+    ],
     session: Session = Depends(get_session),
 ):
     """Generate a professional PDF for a purchase order"""
@@ -815,7 +854,9 @@ def get_purchase_order_pdf(
 @router.get("/recipes/product/{product_id}")
 def get_product_recipe(
     product_id: int,
-    current_user: Annotated[models.User, Depends(get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.INVENTORY_READ))
+    ],
     session: Session = Depends(get_session),
 ):
     """Get recipe (BOM) for a product"""
@@ -858,7 +899,9 @@ def get_product_recipe(
 def update_product_recipe(
     product_id: int,
     recipe_update: ProductRecipeUpdate,
-    current_user: Annotated[models.User, Depends(get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.INVENTORY_MANAGE))
+    ],
     session: Session = Depends(get_session),
 ):
     """Replace entire recipe for a product"""
@@ -906,7 +949,9 @@ def update_product_recipe(
 @router.get("/recipes/product/{product_id}/cost", response_model=ProductCostResponse)
 def get_product_cost(
     product_id: int,
-    current_user: Annotated[models.User, Depends(get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.INVENTORY_READ))
+    ],
     session: Session = Depends(get_session),
 ):
     """Calculate theoretical cost for a product based on its recipe"""
@@ -930,7 +975,9 @@ def get_product_cost(
 
 @router.get("/stock-levels", response_model=list[StockLevelResponse])
 def get_stock_levels(
-    current_user: Annotated[models.User, Depends(get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.INVENTORY_READ))
+    ],
     session: Session = Depends(get_session),
     category: InventoryCategory | None = None,
 ):
@@ -970,7 +1017,9 @@ def get_stock_levels(
 
 @router.get("/low-stock")
 def get_low_stock_alerts(
-    current_user: Annotated[models.User, Depends(get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.INVENTORY_READ))
+    ],
     session: Session = Depends(get_session),
 ):
     """Get items at or below reorder level"""
@@ -994,7 +1043,9 @@ def get_low_stock_alerts(
 
 @router.get("/valuation", response_model=InventoryValuationResponse)
 def get_inventory_valuation(
-    current_user: Annotated[models.User, Depends(get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.INVENTORY_READ))
+    ],
     session: Session = Depends(get_session),
 ):
     """Get FIFO inventory valuation report"""
@@ -1009,7 +1060,9 @@ def get_inventory_valuation(
 
 @router.get("/transactions")
 def get_inventory_transactions(
-    current_user: Annotated[models.User, Depends(get_current_user)],
+    current_user: Annotated[
+        models.User, Depends(PermissionChecker(Permissions.INVENTORY_READ))
+    ],
     session: Session = Depends(get_session),
     item_id: int | None = None,
     transaction_type: TransactionType | None = None,

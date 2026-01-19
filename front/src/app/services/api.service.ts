@@ -5,8 +5,13 @@ import { environment } from '../../environments/environment';
 
 // Interfaces
 export interface User {
+  id: number;
   email: string;
   tenant_id: number;
+  full_name?: string | null;
+  role_id?: number | null;
+  role_name?: string | null;
+  permissions?: string[];
 }
 
 export interface AuthResponse {
@@ -273,6 +278,17 @@ export class ApiService {
 
   getCurrentUser(): User | null {
     return this.userSubject.value;
+  }
+
+  hasPermission(permission: string): boolean {
+    const user = this.getCurrentUser();
+    return user?.permissions?.includes(permission) ?? false;
+  }
+
+  hasAnyPermission(permissions: string[]): boolean {
+    const user = this.getCurrentUser();
+    if (!user || !user.permissions) return false;
+    return permissions.some((p) => user.permissions!.includes(p));
   }
 
   // Auth
@@ -679,5 +695,35 @@ export class ApiService {
 
   updateTranslations(entityType: string, entityId: number, translations: any): Observable<{ message: string; updated: string[] }> {
     return this.http.put<{ message: string; updated: string[] }>(`${this.apiUrl}/i18n/${entityType}/${entityId}`, translations);
+  }
+
+  // Roles
+  getRoles(): Observable<any[]> {
+    return this.http.get<any[]>(`${this.apiUrl}/roles`);
+  }
+
+  createRole(role: { name: string; description?: string; permissions: string[] }): Observable<any> {
+    return this.http.post<any>(`${this.apiUrl}/roles`, role);
+  }
+
+  updateRole(id: number, role: { name?: string; description?: string; permissions?: string[] }): Observable<any> {
+    return this.http.put<any>(`${this.apiUrl}/roles/${id}`, role);
+  }
+
+  deleteRole(id: number): Observable<any> {
+    return this.http.delete<any>(`${this.apiUrl}/roles/${id}`);
+  }
+
+  getPermissions(): Observable<string[]> {
+    return this.http.get<string[]>(`${this.apiUrl}/permissions`);
+  }
+
+  // Users
+  getUsers(): Observable<User[]> {
+    return this.http.get<User[]>(`${this.apiUrl}/users`);
+  }
+
+  updateUser(id: number, data: { full_name?: string; role_id?: number; password?: string }): Observable<User> {
+    return this.http.put<User>(`${this.apiUrl}/users/${id}`, data);
   }
 }

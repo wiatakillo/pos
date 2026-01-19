@@ -68,6 +68,28 @@ class Tenant(SQLModel, table=True):
     # )  # Enable auto-deduction on orders
 
     users: list["User"] = Relationship(back_populates="tenant")
+    roles: list["Role"] = Relationship(back_populates="tenant")
+
+
+class Role(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    name: str = Field(index=True)
+    description: str | None = None
+    is_default: bool = Field(
+        default=False
+    )  # If true, it's a system default role (e.g. Admin, Manager)
+
+    tenant: Tenant = Relationship(back_populates="roles")
+    users: list["User"] = Relationship(back_populates="role")
+    permissions: list["RolePermission"] = Relationship(back_populates="role")
+
+
+class RolePermission(SQLModel, table=True):
+    role_id: int = Field(foreign_key="role.id", primary_key=True)
+    permission: str = Field(primary_key=True, index=True)
+
+    role: Role = Relationship(back_populates="permissions")
 
 
 class User(SQLModel, table=True):
@@ -78,6 +100,9 @@ class User(SQLModel, table=True):
 
     tenant_id: int | None = Field(default=None, foreign_key="tenant.id")
     tenant: Tenant | None = Relationship(back_populates="users")
+
+    role_id: int | None = Field(default=None, foreign_key="role.id")
+    role: Role | None = Relationship(back_populates="users")
 
 
 class TenantMixin(SQLModel):
@@ -289,6 +314,42 @@ class UserRegister(SQLModel):
     email: str
     password: str
     full_name: str | None = None
+
+
+class UserReadWithPermissions(SQLModel):
+    id: int
+    email: str
+    full_name: str | None = None
+    tenant_id: int
+    role_id: int | None = None
+    role_name: str | None = None
+    permissions: list[str] = []
+
+
+class RoleBase(SQLModel):
+    name: str
+    description: str | None = None
+
+
+class RoleCreate(RoleBase):
+    permissions: list[str] = []
+
+
+class RoleUpdate(RoleBase):
+    name: str | None = None
+    permissions: list[str] | None = None
+
+
+class RoleResponse(RoleBase):
+    id: int
+    is_default: bool
+    permissions: list[str]
+
+
+class UserUpdate(SQLModel):
+    full_name: str | None = None
+    role_id: int | None = None
+    password: str | None = None  # Optional password reset
 
 
 class ProductUpdate(SQLModel):

@@ -6,11 +6,23 @@ import { ApiService, TenantSettings } from '../services/api.service';
 import { SidebarComponent } from '../shared/sidebar.component';
 import { TranslationsComponent } from '../translations/translations.component';
 import { TranslateModule } from '@ngx-translate/core';
+import { RolesComponent } from './roles.component';
+import { UsersComponent } from './users.component';
+import { HasPermissionDirective } from '../shared/has-permission.directive';
 
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [CommonModule, FormsModule, SidebarComponent, TranslateModule, TranslationsComponent],
+  imports: [
+    CommonModule,
+    FormsModule,
+    SidebarComponent,
+    TranslateModule,
+    TranslationsComponent,
+    RolesComponent,
+    UsersComponent,
+    HasPermissionDirective,
+  ],
   template: `
     <app-sidebar>
       <div class="page-header">
@@ -81,6 +93,33 @@ import { TranslateModule } from '@ngx-translate/core';
             </svg>
             <span>{{ 'SETTINGS.TRANSLATIONS_TITLE' | translate }}</span>
           </button>
+
+          <button
+            *appHasPermission="'users:read'"
+            type="button"
+            class="tab"
+            [class.active]="activeSection() === 'users'"
+            (click)="activeSection.set('users')">
+            <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+              <circle cx="9" cy="7" r="4"></circle>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+            </svg>
+            <span>Users</span>
+          </button>
+
+          <button
+            *appHasPermission="'roles:manage'"
+            type="button"
+            class="tab"
+            [class.active]="activeSection() === 'roles'"
+            (click)="activeSection.set('roles')">
+            <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+            </svg>
+            <span>Roles</span>
+          </button>
         </div>
       </div>
 
@@ -100,7 +139,14 @@ import { TranslateModule } from '@ngx-translate/core';
               </div>
               <app-translations></app-translations>
             </div>
-          } @else {
+          }
+          @else if (activeSection() === 'users') {
+            <app-users-settings></app-users-settings>
+          }
+          @else if (activeSection() === 'roles') {
+            <app-roles-settings></app-roles-settings>
+          }
+          @else {
             <!-- Tenant Settings Sections (Shared Form) -->
             <form (ngSubmit)="saveSettings()" class="settings-form">
 
@@ -1117,7 +1163,7 @@ export class SettingsComponent implements OnInit {
   private router = inject(Router);
 
   settings = signal<TenantSettings | null>(null);
-  activeSection = signal<'general' | 'contact' | 'hours' | 'payments' | 'translations'>('general');
+  activeSection = signal<'general' | 'contact' | 'hours' | 'payments' | 'translations' | 'users' | 'roles'>('general');
   loading = signal<boolean>(false);
   saving = signal<boolean>(false);
   error = signal<string | null>(null);
