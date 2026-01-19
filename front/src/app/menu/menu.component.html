@@ -1,0 +1,671 @@
+<div class="menu-page">
+  @if (loading()) {
+  <div class="loading-screen">
+    <div class="loading-content">
+      <div class="skeleton-header">
+        <div class="skeleton-logo"></div>
+        <div class="skeleton-text skeleton-title"></div>
+        <div class="skeleton-text skeleton-subtitle"></div>
+      </div>
+      <div class="skeleton-categories">
+        <div class="skeleton-pill"></div>
+        <div class="skeleton-pill"></div>
+        <div class="skeleton-pill"></div>
+        <div class="skeleton-pill"></div>
+      </div>
+      <div class="skeleton-cards">
+        <div class="skeleton-card">
+          <div class="skeleton-image"></div>
+          <div class="skeleton-text"></div>
+          <div class="skeleton-text short"></div>
+        </div>
+        <div class="skeleton-card">
+          <div class="skeleton-image"></div>
+          <div class="skeleton-text"></div>
+          <div class="skeleton-text short"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  } @else if (error()) {
+  <div class="error-screen">
+    <div class="error-icon">
+      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="12" cy="12" r="10" />
+        <path d="M12 8v4M12 16h.01" />
+      </svg>
+    </div>
+    <h1>{{ 'MENU.TITLE' | translate }}</h1>
+    <p>{{ 'ERRORS.NOT_FOUND' | translate }}</p>
+  </div>
+  } @else {
+  <!-- Hero Header -->
+  <header class="hero-header">
+    <div class="hero-overlay"></div>
+    <div class="hero-content">
+      <div class="hero-top-row">
+        @if (tenantLogo()) {
+        <div class="logo-container">
+          <img [src]="tenantLogo()" alt="Business Logo" class="tenant-logo" />
+        </div>
+        }
+        <app-language-picker class="menu-language-picker"></app-language-picker>
+      </div>
+
+      <div class="hero-info">
+        <h1 class="restaurant-name">{{ tenantName() }}</h1>
+        @if (tenantDescription()) {
+        <p class="restaurant-tagline">{{ tenantDescription() }}</p>
+        }
+        <div class="table-pill">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+            <polyline points="9,22 9,12 15,12 15,22" />
+          </svg>
+          <span>{{ tableGreeting() }}</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Sticky Category Navigation -->
+  <nav class="category-nav" [class.scrolled]="isScrolled()">
+    <div class="category-scroll-container">
+      <button class="category-chip" [class.active]="selectedCategory() === null" (click)="selectCategory(null)">
+        <span class="category-icon">🍽️</span>
+        <span class="category-label">{{ 'COMMON.ALL' | translate }}</span>
+      </button>
+      @for (category of availableCategories(); track category) {
+      <button class="category-chip" [class.active]="selectedCategory() === category" (click)="selectCategory(category)">
+        <span class="category-icon">{{ getCategoryIcon(category) }}</span>
+        <span class="category-label">{{ category }}</span>
+      </button>
+      }
+    </div>
+
+    <!-- Subcategory pills -->
+    @if (selectedCategory() && availableSubcategories().length > 0) {
+    <div class="subcategory-scroll-container">
+      <button class="subcategory-chip" [class.active]="selectedSubcategory() === null"
+        (click)="selectSubcategory(null)">
+        {{ 'COMMON.ALL' | translate }}
+      </button>
+      @for (subcategoryCode of availableSubcategories(); track subcategoryCode) {
+      <button class="subcategory-chip" [class.active]="selectedSubcategory() === subcategoryCode"
+        (click)="selectSubcategory(subcategoryCode)">
+        {{ getSubcategoryLabel(subcategoryCode) }}
+      </button>
+      }
+    </div>
+    }
+  </nav>
+
+  <main class="menu-content">
+    <!-- Active Orders Tracker -->
+    @if (placedOrders().length > 0) {
+    <section class="orders-section">
+      @for (order of placedOrders(); track order.id) {
+      <div class="order-tracker-card">
+        <div class="order-tracker-header" (click)="ordersExpanded.set(!ordersExpanded())">
+          <div class="order-status-indicator" [class]="'status-' + order.status">
+            <span class="pulse-dot"></span>
+          </div>
+          <div class="order-info">
+            <span class="order-label">{{ 'ORDERS.ORDER_ID' | translate }} #{{ order.id }}</span>
+            <span class="order-status-text">{{ ('ORDER_STATUS.' + order.status) | translate }}</span>
+          </div>
+          <span class="order-total-badge">{{ formatPrice(order.total) }}</span>
+          <svg class="chevron-toggle" [class.expanded]="ordersExpanded()" width="20" height="20" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6,9 12,15 18,9" />
+          </svg>
+        </div>
+
+        @if (ordersExpanded()) {
+        <div class="order-tracker-body">
+          <div class="order-items-list">
+            @for (item of getSortedOrderItems(order.items); track getProductKey(item.product)) {
+            <div class="order-item-row">
+              <div class="item-status-dot" [class]="'status-' + (item.status || 'pending')"></div>
+              <span class="item-qty-badge">
+                @if (!isPaid() && item.status === 'pending' && item.itemId) {
+                <input type="number" [value]="item.quantity"
+                  (change)="updateItemQuantity(order.id, item.itemId!, +$any($event.target).value)" min="1"
+                  class="quantity-input" />
+                } @else {
+                {{ item.quantity }}×
+                }
+              </span>
+              <span class="item-name">{{ item.product.name }}</span>
+              <span class="item-price">{{ formatPrice(item.product.price_cents * item.quantity) }}</span>
+              @if (item.status) {
+              <span class="item-status-label" [class]="'status-' + item.status">
+                {{ getItemStatusLabel(item.status) }}
+              </span>
+              }
+              @if (!isPaid() && item.itemId && item.status === 'pending') {
+              <button class="remove-item-btn" (click)="removeItemFromOrder(order.id, item.itemId!)" title="Remove item">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+              }
+            </div>
+            }
+          </div>
+
+          <div class="order-actions">
+            @if (isPaid()) {
+            <div class="paid-badge">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                <polyline points="22 4 12 14.01 9 11.01" />
+              </svg>
+              <span>{{ 'PAYMENTS.PAID' | translate }}</span>
+            </div>
+            } @else {
+            @if (canCancelOrder(order)) {
+            <button class="btn-cancel-order" (click)="cancelOrder(order.id)" [disabled]="processingPayment()">
+              {{ 'COMMON.CANCEL' | translate }}
+            </button>
+            }
+            <button class="btn-pay-now" (click)="startCheckout(order)" [disabled]="processingPayment()">
+              {{ processingPayment() ? ('PAYMENTS.PROCESSING' | translate) : ('PAYMENTS.PAY_NOW' | translate) }}
+            </button>
+            }
+          </div>
+        </div>
+        }
+      </div>
+      }
+    </section>
+    }
+
+    <!-- Featured Items Section -->
+    @if (featuredProducts().length > 0 && selectedCategory() === null) {
+    <section class="featured-section">
+      <div class="section-header-row">
+        <h2 class="section-title">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+          </svg>
+          {{ 'MENU.FEATURED' | translate }}
+        </h2>
+      </div>
+      <div class="featured-scroll">
+        @for (product of featuredProducts(); track getProductKey(product)) {
+        <div class="featured-card" (click)="openProductDetail(product)">
+          <div class="featured-image-container">
+            @if (product.image_filename) {
+            <img [src]="getProductImageUrl(product)" class="featured-image" alt="{{ product.name }}">
+            } @else {
+            <div class="featured-image-placeholder">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <path d="M21 15l-5-5L5 21" />
+              </svg>
+            </div>
+            }
+            <div class="featured-overlay">
+              <span class="featured-badge">⭐ {{ 'MENU.POPULAR' | translate }}</span>
+            </div>
+          </div>
+          <div class="featured-info">
+            <h3 class="featured-name">{{ product.name }}</h3>
+            <span class="featured-price">{{ formatPrice(product.price_cents) }}</span>
+          </div>
+          <button class="quick-add-btn" (click)="addToCart(product); $event.stopPropagation()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+          </button>
+        </div>
+        }
+      </div>
+    </section>
+    }
+
+    <!-- Products Grid -->
+    <section class="products-section">
+      <div class="products-header">
+        <h2 class="section-title">{{ selectedCategory() || ('MENU.TITLE' | translate) }}</h2>
+        <span class="product-count">{{ filteredProducts().length }} {{ 'COMMON.ITEMS' | translate }}</span>
+      </div>
+
+      <div class="products-grid">
+        @for (product of filteredProducts(); track getProductKey(product)) {
+        <article class="product-card" (click)="openProductDetail(product)">
+          <!-- Product Image -->
+          <div class="product-image-container">
+            @if (product.image_filename) {
+            <img [src]="getProductImageUrl(product)" class="product-image" alt="{{ product.name }}" loading="lazy">
+            } @else {
+            <div class="product-image-placeholder">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <path d="M21 15l-5-5L5 21" />
+              </svg>
+            </div>
+            }
+
+            <!-- Badges overlay -->
+            <div class="badges-overlay">
+              @if (product.wine_type) {
+              <span class="type-badge" [class]="'wine-type-' + getWineTypeClass(product.wine_type)">
+                {{ getWineTypeLabel(product.wine_type) }}
+              </span>
+              }
+              @if (hasDietaryInfo(product)) {
+              <div class="dietary-badges">
+                @if (isVegetarian(product)) {
+                <span class="dietary-badge vegetarian" title="Vegetarian">🥬</span>
+                }
+                @if (isVegan(product)) {
+                <span class="dietary-badge vegan" title="Vegan">🌱</span>
+                }
+                @if (isGlutenFree(product)) {
+                <span class="dietary-badge gluten-free" title="Gluten Free">🌾</span>
+                }
+              </div>
+              }
+            </div>
+          </div>
+
+          <!-- Product Info -->
+          <div class="product-info">
+            <div class="product-header-row">
+              <h3 class="product-name">{{ product.name }}</h3>
+              <span class="product-price">{{ formatPrice(product.price_cents) }}</span>
+            </div>
+
+            <!-- Origin / Winery -->
+            @if (product.country || product.region || product.winery) {
+            <p class="product-origin">
+              @if (product.winery) {
+              {{ product.winery }}
+              @if (product.country || product.region) { · }
+              }
+              {{ product.country }}{{ product.country && product.region ? ', ' : '' }}{{ product.region }}
+              @if (product.vintage) { · {{ product.vintage }} }
+            </p>
+            }
+
+            <!-- Short Description (visible by default) -->
+            @if (product.detailed_description || product.description) {
+            <p class="product-description">
+              {{ (product.detailed_description || product.description) | slice:0:80 }}@if ((product.detailed_description
+              || product.description)!.length > 80) {…}
+            </p>
+            }
+
+            <!-- Ingredients preview -->
+            @if (product.ingredients) {
+            <p class="product-ingredients">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path
+                  d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z" />
+              </svg>
+              {{ product.ingredients | slice:0:50 }}@if (product.ingredients.length > 50) {…}
+            </p>
+            }
+
+            <!-- Wine details badges -->
+            @if (product.wine_style || product.grape_variety) {
+            <div class="detail-badges">
+              @if (product.grape_variety) {
+              <span class="detail-badge">{{ product.grape_variety }}</span>
+              }
+              @if (product.wine_style) {
+              <span class="detail-badge">{{ product.wine_style }}</span>
+              }
+            </div>
+            }
+          </div>
+
+          <!-- Add Button -->
+          <button class="add-to-cart-btn" (click)="addToCart(product); $event.stopPropagation()">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+          </button>
+        </article>
+        }
+      </div>
+
+      <!-- Empty state -->
+      @if (filteredProducts().length === 0) {
+      <div class="empty-state">
+        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+          <circle cx="11" cy="11" r="8" />
+          <path d="m21 21-4.35-4.35" />
+        </svg>
+        <p>{{ 'MENU.NO_PRODUCTS' | translate }}</p>
+      </div>
+      }
+    </section>
+  </main>
+
+  <!-- Bottom Sheet Cart -->
+  @if (cart().length > 0) {
+  <div class="cart-sheet" [class.expanded]="cartExpanded()">
+    <div class="cart-handle" (click)="cartExpanded.set(!cartExpanded())">
+      <span class="handle-bar"></span>
+    </div>
+
+    <!-- Collapsed state -->
+    <div class="cart-summary" (click)="cartExpanded.set(!cartExpanded())">
+      <div class="cart-summary-left">
+        <div class="cart-icon-badge">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="9" cy="21" r="1" />
+            <circle cx="20" cy="21" r="1" />
+            <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+          </svg>
+          <span class="cart-count-badge">{{ getTotalItems() }}</span>
+        </div>
+        <span class="cart-summary-text">{{ getTotalItems() }} {{ 'COMMON.ITEMS' | translate }}</span>
+      </div>
+      <span class="cart-summary-total">{{ formatPrice(getTotal()) }}</span>
+      <svg class="cart-chevron" [class.expanded]="cartExpanded()" width="20" height="20" viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" stroke-width="2">
+        <polyline points="18,15 12,9 6,15" />
+      </svg>
+    </div>
+
+    <!-- Expanded state -->
+    @if (cartExpanded()) {
+    <div class="cart-expanded-content">
+      <div class="cart-items-list">
+        @for (item of cart(); track getProductKey(item.product)) {
+        <div class="cart-item-card">
+          <div class="cart-item-info">
+            <span class="cart-item-name">{{ item.product.name }}</span>
+            <span class="cart-item-price">{{ formatPrice(item.product.price_cents * item.quantity) }}</span>
+          </div>
+          <div class="cart-item-controls">
+            <button class="qty-control-btn minus" (click)="decrementItem(item)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            </button>
+            <span class="qty-display">{{ item.quantity }}</span>
+            <button class="qty-control-btn plus" (click)="incrementItem(item)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        }
+      </div>
+
+      <div class="cart-totals">
+        <div class="cart-total-row">
+          <span>{{ 'COMMON.TOTAL' | translate }}</span>
+          <span class="cart-grand-total">{{ formatPrice(getTotal()) }}</span>
+        </div>
+      </div>
+
+      <button class="place-order-btn" (click)="submitOrder()" [disabled]="submitting()">
+        @if (submitting()) {
+        <span class="btn-loading">
+          <span class="spinner-small"></span>
+          {{ 'COMMON.LOADING' | translate }}
+        </span>
+        } @else {
+        {{ placedOrders().length > 0 ? ('MENU.ADD_TO_ORDER' | translate) : ('MENU.PLACE_ORDER' | translate) }}
+        }
+      </button>
+    </div>
+    }
+  </div>
+  }
+
+  <!-- Success Toast -->
+  @if (showSuccessToast()) {
+  <div class="success-toast">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+      <polyline points="22 4 12 14.01 9 11.01" />
+    </svg>
+    <span>{{ 'MENU.ITEMS_ADDED_TO_ORDER' | translate:{ orderId: lastOrderId() } }}</span>
+  </div>
+  }
+
+  <!-- Product Detail Modal -->
+  @if (selectedProduct()) {
+  <div class="product-detail-overlay" (click)="closeProductDetail()">
+    <div class="product-detail-sheet" (click)="$event.stopPropagation()">
+      <div class="detail-handle">
+        <span class="handle-bar"></span>
+      </div>
+
+      <button class="detail-close-btn" (click)="closeProductDetail()">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 6L6 18M6 6l12 12" />
+        </svg>
+      </button>
+
+      <div class="detail-content">
+        <!-- Hero Image -->
+        <div class="detail-image-container">
+          @if (selectedProduct()!.image_filename) {
+          <img [src]="getProductImageUrl(selectedProduct()!)" class="detail-image" alt="{{ selectedProduct()!.name }}">
+          } @else {
+          <div class="detail-image-placeholder">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <path d="M21 15l-5-5L5 21" />
+            </svg>
+          </div>
+          }
+
+          <!-- Badges -->
+          <div class="detail-badges">
+            @if (selectedProduct()!.wine_type) {
+            <span class="type-badge large" [class]="'wine-type-' + getWineTypeClass(selectedProduct()!.wine_type!)">
+              {{ getWineTypeLabel(selectedProduct()!.wine_type!) }}
+            </span>
+            }
+            @if (hasDietaryInfo(selectedProduct()!)) {
+            @if (isVegetarian(selectedProduct()!)) {
+            <span class="dietary-badge-large vegetarian">🥬 {{ 'MENU.VEGETARIAN' | translate }}</span>
+            }
+            @if (isVegan(selectedProduct()!)) {
+            <span class="dietary-badge-large vegan">🌱 {{ 'MENU.VEGAN' | translate }}</span>
+            }
+            @if (isGlutenFree(selectedProduct()!)) {
+            <span class="dietary-badge-large gluten-free">🌾 {{ 'MENU.GLUTEN_FREE' | translate }}</span>
+            }
+            }
+          </div>
+        </div>
+
+        <!-- Product Info -->
+        <div class="detail-info">
+          <div class="detail-header">
+            <h2 class="detail-name">{{ selectedProduct()!.name }}</h2>
+            <span class="detail-price">{{ formatPrice(selectedProduct()!.price_cents) }}</span>
+          </div>
+
+          <!-- Tags row -->
+          @if (selectedProduct()!.vintage || selectedProduct()!.winery || selectedProduct()!.grape_variety ||
+          selectedProduct()!.wine_style) {
+          <div class="detail-tags">
+            @if (selectedProduct()!.vintage) {
+            <span class="detail-tag">{{ selectedProduct()!.vintage }}</span>
+            }
+            @if (selectedProduct()!.winery) {
+            <span class="detail-tag">{{ selectedProduct()!.winery }}</span>
+            }
+            @if (selectedProduct()!.grape_variety) {
+            <span class="detail-tag">{{ selectedProduct()!.grape_variety }}</span>
+            }
+            @if (selectedProduct()!.wine_style) {
+            <span class="detail-tag">{{ selectedProduct()!.wine_style }}</span>
+            }
+          </div>
+          }
+
+          <!-- Origin -->
+          @if (selectedProduct()!.country || selectedProduct()!.region) {
+          <div class="detail-origin">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+              <circle cx="12" cy="10" r="3" />
+            </svg>
+            <span>{{ selectedProduct()!.country }}{{ selectedProduct()!.country && selectedProduct()!.region ? ', ' : ''
+              }}{{ selectedProduct()!.region }}</span>
+          </div>
+          }
+
+          <!-- Description -->
+          @if (selectedProduct()!.detailed_description || selectedProduct()!.description) {
+          <div class="detail-section">
+            <h4>{{ 'MENU.DESCRIPTION' | translate }}</h4>
+            <p>{{ selectedProduct()!.detailed_description || selectedProduct()!.description }}</p>
+          </div>
+          }
+
+          <!-- Aromas -->
+          @if (selectedProduct()!.aromas) {
+          <div class="detail-section">
+            <h4>{{ 'MENU.AROMAS' | translate }}</h4>
+            <p>{{ selectedProduct()!.aromas }}</p>
+          </div>
+          }
+
+          <!-- Elaboration -->
+          @if (selectedProduct()!.elaboration) {
+          <div class="detail-section">
+            <h4>{{ 'MENU.ELABORATION' | translate }}</h4>
+            <p>{{ selectedProduct()!.elaboration }}</p>
+          </div>
+          }
+
+          <!-- Ingredients -->
+          @if (selectedProduct()!.ingredients) {
+          <div class="detail-section ingredients">
+            <h4>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path
+                  d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z" />
+              </svg>
+              {{ 'MENU.INGREDIENTS' | translate }}
+            </h4>
+            <p>{{ selectedProduct()!.ingredients }}</p>
+          </div>
+          }
+        </div>
+      </div>
+
+      <!-- Add to Cart sticky button -->
+      <div class="detail-footer">
+        <button class="detail-add-btn" (click)="addToCart(selectedProduct()!); closeProductDetail()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          {{ 'MENU.ADD_TO_CART' | translate }} · {{ formatPrice(selectedProduct()!.price_cents) }}
+        </button>
+      </div>
+    </div>
+  </div>
+  }
+
+  <!-- Customer Name Modal -->
+  @if (showNameModal()) {
+  <div class="modal-overlay" (click)="skipName()">
+    <div class="modal-sheet" (click)="$event.stopPropagation()">
+      <div class="modal-handle">
+        <span class="handle-bar"></span>
+      </div>
+      <div class="modal-content">
+        <div class="modal-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+            <circle cx="12" cy="7" r="4" />
+          </svg>
+        </div>
+        <h3 class="modal-title">{{ 'MENU.WHATS_YOUR_NAME' | translate }}</h3>
+        <p class="modal-subtitle">{{ 'MENU.NAME_OPTIONAL' | translate }}</p>
+        <input type="text" class="name-input" [(ngModel)]="nameInputValue" [placeholder]="'MENU.ENTER_NAME' | translate"
+          (keyup.enter)="confirmName()" #nameInput autofocus />
+        <div class="modal-actions">
+          <button class="btn-secondary" (click)="skipName()">{{ 'COMMON.SKIP' | translate }}</button>
+          <button class="btn-primary" (click)="confirmName()">{{ 'COMMON.OK' | translate }}</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  }
+
+  <!-- Payment Modal -->
+  @if (showPaymentModal()) {
+  <div class="modal-overlay" (click)="cancelPayment()">
+    <div class="modal-sheet payment-modal" (click)="$event.stopPropagation()">
+      <div class="modal-handle">
+        <span class="handle-bar"></span>
+      </div>
+      <div class="modal-content">
+        <div class="modal-header-row">
+          <h3 class="modal-title">{{ 'MENU.CHECKOUT' | translate }}</h3>
+          <button class="close-btn" (click)="cancelPayment()">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="payment-amount">
+          <span class="payment-label">{{ 'COMMON.TOTAL' | translate }}</span>
+          <span class="payment-value">{{ formatPrice(paymentAmount()) }}</span>
+        </div>
+
+        <div id="card-element" class="card-element"></div>
+
+        @if (cardError()) {
+        <div class="card-error">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 8v4M12 16h.01" />
+          </svg>
+          {{ cardError() }}
+        </div>
+        }
+
+        @if (paymentSuccess()) {
+        <div class="payment-success">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+            <polyline points="22 4 12 14.01 9 11.01" />
+          </svg>
+          <span>{{ 'PAYMENTS.PAYMENT_SUCCESSFUL' | translate }}</span>
+        </div>
+        }
+
+        <div class="modal-actions">
+          @if (!paymentSuccess()) {
+          <button class="btn-secondary" (click)="cancelPayment()">{{ 'COMMON.CANCEL' | translate }}</button>
+          <button class="btn-primary" (click)="processPayment()" [disabled]="processingPayment()">
+            @if (processingPayment()) {
+            <span class="spinner-small"></span>
+            }
+            {{ processingPayment() ? ('PAYMENTS.PROCESSING' | translate) : ('PAYMENTS.PAY' | translate) }}
+          </button>
+          } @else {
+          <button class="btn-primary full-width" (click)="finishPayment()">{{ 'MENU.DONE' | translate }}</button>
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+  }
+  }
+</div>

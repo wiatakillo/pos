@@ -28,7 +28,10 @@
     "SUBCATEGORY": "Subcategoría",
     "AROMAS": "Aromas",
     "WHATS_YOUR_NAME": "¿Cuál es tu nombre?",
-    "STRIPE_INTEGRATION": "Integración de Stripe"
+    "STRIPE_INTEGRATION": "Integración de Stripe",
+    "ITEMS": "artículos",
+    "SKIP": "Omitir",
+    "OK": "OK"
   },
   "NAV": {
     "HOME": "Inicio",
@@ -101,7 +104,18 @@
     "ELABORATION": "Elaboración",
     "ITEMS_ADDED_TO_ORDER": "Artículos añadidos al Pedido #{{orderId}}",
     "CHECKOUT": "Pagar",
-    "DONE": "Hecho"
+    "DONE": "Hecho",
+    "FEATURED": "Destacados",
+    "POPULAR": "Popular",
+    "VEGETARIAN": "Vegetariano",
+    "VEGAN": "Vegano",
+    "GLUTEN_FREE": "Sin Gluten",
+    "DESCRIPTION": "Descripción",
+    "AROMAS": "Aromas",
+    "NO_PRODUCTS": "No se encontraron productos",
+    "WHATS_YOUR_NAME": "¿Cuál es tu nombre?",
+    "NAME_OPTIONAL": "(opcional - puedes omitirlo)",
+    "ENTER_NAME": "Introduce tu nombre"
   },
   "PRODUCTS": {
     "TITLE": "Productos",
@@ -381,6 +395,8 @@
   "PAYMENTS": {
     "PAYMENT": "Pago",
     "PAY": "Pagar",
+    "PAY_NOW": "Pagar Ahora",
+    "PAID": "Pagado",
     "PROCESSING": "Procesando...",
     "PAYMENT_SUCCESSFUL": "¡Pago exitoso!",
     "PAYMENT_FAILED": "Pago fallido",

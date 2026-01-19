@@ -28,7 +28,10 @@
     "SUBCATEGORY": "Subcategory",
     "AROMAS": "Aromas",
     "WHATS_YOUR_NAME": "What's your name?",
-    "STRIPE_INTEGRATION": "Stripe Integration"
+    "STRIPE_INTEGRATION": "Stripe Integration",
+    "ITEMS": "items",
+    "SKIP": "Skip",
+    "OK": "OK"
   },
   "NAV": {
     "HOME": "Home",
@@ -101,7 +104,18 @@
     "CHECKOUT": "Checkout",
     "DONE": "Done",
     "INGREDIENTS": "Ingredients",
-    "ELABORATION": "Elaboration"
+    "ELABORATION": "Elaboration",
+    "FEATURED": "Featured",
+    "POPULAR": "Popular",
+    "VEGETARIAN": "Vegetarian",
+    "VEGAN": "Vegan",
+    "GLUTEN_FREE": "Gluten Free",
+    "DESCRIPTION": "Description",
+    "AROMAS": "Aromas",
+    "NO_PRODUCTS": "No products found",
+    "WHATS_YOUR_NAME": "What's your name?",
+    "NAME_OPTIONAL": "(optional - you can skip this)",
+    "ENTER_NAME": "Enter your name"
   },
   "PRODUCTS": {
     "TITLE": "Products",
@@ -381,6 +395,8 @@
   "PAYMENTS": {
     "PAYMENT": "Payment",
     "PAY": "Pay",
+    "PAY_NOW": "Pay Now",
+    "PAID": "Paid",
     "PROCESSING": "Processing...",
     "PAYMENT_SUCCESSFUL": "Payment successful!",
     "PAYMENT_FAILED": "Payment failed",
