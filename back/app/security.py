@@ -51,6 +51,23 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     return encoded_jwt
 
 
+def create_refresh_token(data: dict, expires_delta: timedelta | None = None) -> str:
+    """
+    Create a refresh token with longer expiry and 'refresh' type.
+    Uses separate secret key for additional security.
+    """
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.now(timezone.utc) + expires_delta
+    else:
+        expire = datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days)
+    to_encode.update({"exp": expire, "type": "refresh"})
+    encoded_jwt = jwt.encode(
+        to_encode, settings.refresh_secret_key, algorithm=settings.algorithm
+    )
+    return encoded_jwt
+
+
 async def get_token_from_cookie(
     request: Request,
     token: Annotated[str | None, Depends(oauth2_scheme)]
@@ -85,6 +102,7 @@ async def get_current_user(
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
         email: str = payload.get("sub")
         tenant_id: int = payload.get("tenant_id")
+        token_version: int = payload.get("token_version", 0)
         if email is None or tenant_id is None:
             raise credentials_exception
     except JWTError:
@@ -100,5 +118,55 @@ async def get_current_user(
     
     if user is None:
         raise credentials_exception
+
+    # Check token version for revocation support
+    if user.token_version != token_version:
+        raise credentials_exception
         
+    return user
+
+
+def validate_refresh_token(refresh_token: str, session: Session) -> User:
+    """
+    Validate a refresh token and return the associated user.
+    Raises HTTPException if token is invalid, expired, or revoked.
+    """
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid refresh token",
+    )
+    
+    if not refresh_token:
+        raise credentials_exception
+    
+    try:
+        payload = jwt.decode(
+            refresh_token, settings.refresh_secret_key, algorithms=[settings.algorithm]
+        )
+        
+        # Verify this is a refresh token (not an access token)
+        if payload.get("type") != "refresh":
+            raise credentials_exception
+        
+        email: str = payload.get("sub")
+        tenant_id: int = payload.get("tenant_id")
+        token_version: int = payload.get("token_version", 0)
+        
+        if email is None or tenant_id is None:
+            raise credentials_exception
+            
+    except JWTError:
+        raise credentials_exception
+
+    # Verify user exists and token version matches
+    statement = select(User).where(User.email == email).where(User.tenant_id == tenant_id)
+    user = session.exec(statement).first()
+    
+    if user is None:
+        raise credentials_exception
+
+    # Check token version for revocation support
+    if user.token_version != token_version:
+        raise credentials_exception
+    
     return user

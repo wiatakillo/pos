@@ -75,6 +75,7 @@ class User(SQLModel, table=True):
     email: str = Field(unique=True, index=True)
     hashed_password: str
     full_name: str | None = None
+    token_version: int = Field(default=0)  # Increment to invalidate all tokens
 
     tenant_id: int | None = Field(default=None, foreign_key="tenant.id")
     tenant: Tenant | None = Relationship(back_populates="users")

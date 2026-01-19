@@ -10,7 +10,7 @@ from uuid import uuid4
 from PIL import Image
 import redis
 import stripe
-from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, status, Query
+from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, status, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
@@ -428,12 +428,26 @@ def login_for_access_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # Token data includes token_version for revocation support
+    token_data = {
+        "sub": user.email,
+        "tenant_id": user.tenant_id,
+        "token_version": user.token_version,
+    }
+
     access_token = security.create_access_token(
-        data={"sub": user.email, "tenant_id": user.tenant_id},
+        data=token_data,
         expires_delta=security.timedelta(minutes=settings.access_token_expire_minutes),
+    )
+    
+    refresh_token = security.create_refresh_token(
+        data=token_data,
+        expires_delta=security.timedelta(days=settings.refresh_token_expire_days),
     )
 
     response = JSONResponse(content={"status": "success", "message": "Logged in"})
+    
+    # Set access token (short-lived, for all paths)
     response.set_cookie(
         key="access_token",
         value=access_token,
@@ -443,15 +457,73 @@ def login_for_access_token(
         path="/",  # Ensure cookie is sent with all API requests
         max_age=settings.access_token_expire_minutes * 60,
     )
+    
+    # Set refresh token (long-lived, restricted to /refresh path for security)
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=settings.is_production,
+        samesite="lax",
+        path="/refresh",  # Only sent to refresh endpoint
+        max_age=settings.refresh_token_expire_days * 24 * 60 * 60,
+    )
+    
     return response
 
 
 @app.post("/logout")
 def logout():
     response = JSONResponse(content={"status": "success", "message": "Logged out"})
-    response.delete_cookie(
-        key="access_token", path="/"
-    )  # Must match path used in set_cookie
+    # Clear both access and refresh tokens
+    response.delete_cookie(key="access_token", path="/")
+    response.delete_cookie(key="refresh_token", path="/refresh")
+    return response
+
+
+@app.post("/refresh")
+def refresh_access_token(
+    request: Request,
+    session: Session = Depends(get_session),
+) -> JSONResponse:
+    """
+    Exchange a valid refresh token for a new access token.
+    The refresh token remains valid until it expires or is revoked.
+    """
+    refresh_token = request.cookies.get("refresh_token")
+    
+    if not refresh_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No refresh token provided",
+        )
+    
+    # Validate refresh token and get user
+    user = security.validate_refresh_token(refresh_token, session)
+    
+    # Create new access token with current token_version
+    token_data = {
+        "sub": user.email,
+        "tenant_id": user.tenant_id,
+        "token_version": user.token_version,
+    }
+    
+    access_token = security.create_access_token(
+        data=token_data,
+        expires_delta=security.timedelta(minutes=settings.access_token_expire_minutes),
+    )
+    
+    response = JSONResponse(content={"status": "success", "message": "Token refreshed"})
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=settings.is_production,
+        samesite="lax",
+        path="/",
+        max_age=settings.access_token_expire_minutes * 60,
+    )
+    
     return response
 
 

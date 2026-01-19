@@ -308,6 +308,16 @@ export class ApiService {
     });
   }
 
+  // Refresh token - exchange valid refresh token for new access token
+  refreshToken(): Observable<any> {
+    return this.http.post(`${this.apiUrl}/refresh`, {}, { withCredentials: true }).pipe(
+      tap(() => {
+        // Re-check auth to update user state with new token
+        this.checkAuth().subscribe();
+      })
+    );
+  }
+
   // Products
   getProducts(): Observable<Product[]> {
     return this.http.get<Product[]>(`${this.apiUrl}/products`);

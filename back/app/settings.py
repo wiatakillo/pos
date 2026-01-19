@@ -42,6 +42,15 @@ class Settings(BaseSettings):
         default=30, validation_alias="ACCESS_TOKEN_EXPIRE_MINUTES"
     )
 
+    # Refresh token settings (separate secret for security)
+    refresh_secret_key: str = Field(
+        default="CHANGE_THIS_REFRESH_SECRET_IN_PRODUCTION",
+        validation_alias="REFRESH_SECRET_KEY",
+    )
+    refresh_token_expire_days: int = Field(
+        default=7, validation_alias="REFRESH_TOKEN_EXPIRE_DAYS"
+    )
+
     stripe_secret_key: str = Field(default="", validation_alias="STRIPE_SECRET_KEY")
     stripe_publishable_key: str = Field(
         default="", validation_alias="STRIPE_PUBLISHABLE_KEY"

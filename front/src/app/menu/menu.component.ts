@@ -129,13 +129,6 @@ interface PlacedOrder {
                           </div>
                         }
                       </div>
-                      @if (isPaid()) {
-                        <div class="paid-banner">{{ 'PAYMENTS.PAYMENT_SUCCESSFUL' | translate }}</div>
-                      } @else {
-                        <button class="pay-btn" (click)="startCheckout(order)" [disabled]="processingPayment()">
-                          {{ processingPayment() ? ('PAYMENTS.PROCESSING' | translate) : ('MENU.PAY_NOW' | translate) }}
-                        </button>
-                      }
                     </div>
                   }
                 </div>
@@ -1262,7 +1255,7 @@ export class MenuComponent implements OnInit {
     // Generate or get session_id from localStorage
     const sessionKey = `session_${this.tableToken}`;
     let sessionId = localStorage.getItem(sessionKey);
-    
+
     if (!sessionId) {
       // Generate new UUID v4
       sessionId = this.generateUUID();
@@ -1273,7 +1266,7 @@ export class MenuComponent implements OnInit {
     // Get or prompt for customer name (optional)
     const nameKey = `customer_name_${this.tableToken}`;
     let customerName = localStorage.getItem(nameKey);
-    
+
     if (!customerName) {
       // Show modal for customer name (optional - user can skip)
       this.showNameModal.set(true);
@@ -1441,7 +1434,7 @@ export class MenuComponent implements OnInit {
           this.audio.playCustomerStatusChange();
           // Update order status if provided
           if (data.status) {
-            this.placedOrders.update(orders => 
+            this.placedOrders.update(orders =>
               orders.map(o => o.id === data.order_id ? { ...o, status: data.status } : o)
             );
           }
@@ -1470,10 +1463,10 @@ export class MenuComponent implements OnInit {
         this.tenantName.set(data.tenant_name);
         this.tableName.set(data.table_name);
         this.tenantId = data.tenant_id;
-        
+
         // Connect to WebSocket for table-specific updates
         this.connectWebSocket();
-        
+
         // Extract available main categories from products
         const categories = new Set<string>();
         productsWithSource.forEach((product: Product) => {
@@ -1482,18 +1475,18 @@ export class MenuComponent implements OnInit {
           }
         });
         this.availableCategories.set(Array.from(categories).sort());
-        
+
         // Update subcategories based on selected category
         this.updateSubcategories(null);
-        
+
         // Apply initial filter (show all)
         this.applyFilter(null, null);
-        
+
         // Set tenant logo if available
         if (data.tenant_logo && data.tenant_id) {
           this.tenantLogo.set(`${environment.apiUrl}/uploads/${data.tenant_id}/logo/${data.tenant_logo}`);
         }
-        
+
         // Set additional tenant info
         this.tenantDescription.set(data.tenant_description || null);
         this.tenantPhone.set(data.tenant_phone || null);
@@ -1502,12 +1495,12 @@ export class MenuComponent implements OnInit {
         this.tenantWebsite.set(data.tenant_website || null);
         this.tenantCurrency.set(data.tenant_currency || '$');
         this.tenantCurrencyCode.set(data.tenant_currency_code || null);
-        
+
         // Set tenant Stripe publishable key for payments
         if (data.tenant_stripe_publishable_key) {
           this.api.setTenantStripeKey(data.tenant_stripe_publishable_key);
         }
-        
+
         this.loading.set(false);
         this.connectWebSocket();
       },
@@ -1535,7 +1528,7 @@ export class MenuComponent implements OnInit {
 
     // Extract all subcategory codes from products in the selected category
     const subcategoryCodes = new Set<string>();
-    
+
     this.products().forEach((product: Product) => {
       if (product.category === category) {
         // Use subcategory_codes if available (from backend)
@@ -1560,7 +1553,7 @@ export class MenuComponent implements OnInit {
         }
       }
     });
-    
+
     // Build ordered subcategory list (wine types first, then others, then Wine by Glass)
     const orderedCodes = [
       // Wine types
@@ -1578,22 +1571,22 @@ export class MenuComponent implements OnInit {
       // Wine by Glass (always last)
       'WINE_BY_GLASS'
     ];
-    
+
     const subcategories: string[] = [];
-    
+
     orderedCodes.forEach(code => {
       if (subcategoryCodes.has(code)) {
         subcategories.push(code);
       }
     });
-    
+
     this.availableSubcategories.set(subcategories);
   }
 
   extractOtherSubcategoryCodes(subcategory: string): string[] {
     const codes: string[] = [];
     const subcatLower = subcategory.toLowerCase();
-    
+
     // Map common subcategory strings to codes
     if (subcategory === 'Appetizers' || subcatLower.includes('appetizers')) codes.push('APPETIZERS');
     if (subcategory === 'Salads' || subcatLower.includes('salads')) codes.push('SALADS');
@@ -1621,7 +1614,7 @@ export class MenuComponent implements OnInit {
     if (subcategory === 'Vegetables') codes.push('VEGETABLES');
     if (subcategory === 'Potatoes') codes.push('POTATOES');
     if (subcategory === 'Bread') codes.push('BREAD');
-    
+
     return codes;
   }
 
@@ -1638,18 +1631,18 @@ export class MenuComponent implements OnInit {
 
   applyFilter(category: string | null, subcategoryCode: string | null) {
     let filtered = this.products();
-    
+
     // Filter by main category
     if (category) {
       filtered = filtered.filter(p => p.category === category);
     }
-    
+
     // Filter by subcategory code
     if (subcategoryCode) {
       if (subcategoryCode === 'WINE_BY_GLASS') {
         // Filter for products with "Wine by Glass" code
-        filtered = filtered.filter(p => 
-          p.subcategory_codes?.includes('WINE_BY_GLASS') || 
+        filtered = filtered.filter(p =>
+          p.subcategory_codes?.includes('WINE_BY_GLASS') ||
           (p.subcategory && p.subcategory.includes('Wine by Glass'))
         );
       } else {
@@ -1665,13 +1658,13 @@ export class MenuComponent implements OnInit {
         });
       }
     }
-    
+
     // Ensure all products have _source field for proper tracking
     filtered = filtered.map(p => ({
       ...p,
       _source: p._source || 'unknown'
     }));
-    
+
     this.filteredProducts.set(filtered);
   }
 
@@ -1758,24 +1751,24 @@ export class MenuComponent implements OnInit {
     const productKey = this.getProductKey(product);
     this.cart.update(items => {
       const existing = items.find(i => this.getProductKey(i.product) === productKey);
-      if (existing) { 
-        return items.map(i => this.getProductKey(i.product) === productKey ? { ...i, quantity: i.quantity + 1 } : i); 
+      if (existing) {
+        return items.map(i => this.getProductKey(i.product) === productKey ? { ...i, quantity: i.quantity + 1 } : i);
       }
       return [...items, { product, quantity: 1, notes: '' }];
     });
   }
 
-  incrementItem(item: CartItem) { 
+  incrementItem(item: CartItem) {
     const productKey = this.getProductKey(item.product);
-    this.cart.update(items => items.map(i => this.getProductKey(i.product) === productKey ? { ...i, quantity: i.quantity + 1 } : i)); 
+    this.cart.update(items => items.map(i => this.getProductKey(i.product) === productKey ? { ...i, quantity: i.quantity + 1 } : i));
   }
 
   decrementItem(item: CartItem) {
     const productKey = this.getProductKey(item.product);
-    if (item.quantity <= 1) { 
-      this.cart.update(items => items.filter(i => this.getProductKey(i.product) !== productKey)); 
-    } else { 
-      this.cart.update(items => items.map(i => this.getProductKey(i.product) === productKey ? { ...i, quantity: i.quantity - 1 } : i)); 
+    if (item.quantity <= 1) {
+      this.cart.update(items => items.filter(i => this.getProductKey(i.product) !== productKey));
+    } else {
+      this.cart.update(items => items.map(i => this.getProductKey(i.product) === productKey ? { ...i, quantity: i.quantity - 1 } : i));
     }
   }
 
@@ -1796,12 +1789,12 @@ export class MenuComponent implements OnInit {
   }
 
   getStatusLabel(status: string): string {
-    const labels: Record<string, string> = { 
-      pending: 'Pending', 
-      preparing: 'Preparing', 
-      ready: 'Ready', 
+    const labels: Record<string, string> = {
+      pending: 'Pending',
+      preparing: 'Preparing',
+      ready: 'Ready',
       partially_delivered: 'Partially Delivered',
-      paid: 'Paid', 
+      paid: 'Paid',
       completed: 'Done',
       cancelled: 'Cancelled'
     };
@@ -1836,15 +1829,15 @@ export class MenuComponent implements OnInit {
   }
 
   submitOrder() {
-    const items: OrderItemCreate[] = this.cart().map(item => ({ 
-      product_id: item.product.id!, 
-      quantity: item.quantity, 
+    const items: OrderItemCreate[] = this.cart().map(item => ({
+      product_id: item.product.id!,
+      quantity: item.quantity,
       notes: item.notes || undefined,
       source: item.product._source || undefined  // Include source to help backend identify correct product
     }));
     this.submitting.set(true);
-    this.api.submitOrder(this.tableToken, { 
-      items, 
+    this.api.submitOrder(this.tableToken, {
+      items,
       notes: this.orderNotes || undefined,
       session_id: this.sessionId,
       customer_name: this.customerName() || undefined
@@ -1852,18 +1845,18 @@ export class MenuComponent implements OnInit {
       next: (response: any) => {
         const orderId = response.order_id;
         const isNewOrder = response.status === 'created';
-        
+
         // Validate session_id matches (security check)
         if (response.session_id && response.session_id !== this.sessionId) {
           console.warn('Session ID mismatch - order may belong to different session');
         }
-        
+
         // Update customer name if returned from backend
         if (response.customer_name && response.customer_name !== this.customerName()) {
           this.customerName.set(response.customer_name);
           localStorage.setItem(`customer_name_${this.tableToken}`, response.customer_name);
         }
-        
+
         // Clear cart and show success message
         this.cart.set([]);
         this.orderNotes = '';
@@ -1872,7 +1865,7 @@ export class MenuComponent implements OnInit {
         setTimeout(() => this.showSuccessToast.set(false), 3000);
         this.ordersExpanded.set(true);
         this.submitting.set(false);
-        
+
         // Reload order from backend to get proper itemId values for newly added items
         // This ensures items are immediately editable without requiring a page reload
         this.loadStoredOrders();
@@ -1970,12 +1963,12 @@ export class MenuComponent implements OnInit {
     if (!confirm('Are you sure you want to remove this item from your order?')) {
       return;
     }
-    
+
     // Find the order item to get product ID for cart update
     const currentOrder = this.placedOrders().find(o => o.id === orderId);
     const itemToRemove = currentOrder?.items.find(item => item.itemId === itemId);
     const productId = itemToRemove?.product.id;
-    
+
     // Use itemId directly (now always available after loadStoredOrders fix)
     this.api.removeOrderItem(this.tableToken, orderId, itemId, this.sessionId).subscribe({
       next: (removeResponse: any) => {
@@ -2003,13 +1996,13 @@ export class MenuComponent implements OnInit {
     if (order.status === 'paid' || order.status === 'completed' || order.status === 'cancelled') {
       return false;
     }
-    
+
     // 2. Any item is not pending (preparing, ready, or delivered)
     const hasNonPendingItems = order.items.some(item => {
       const itemStatus = item.status || 'pending';
       return itemStatus !== 'pending' && itemStatus !== 'cancelled';
     });
-    
+
     return !hasNonPendingItems;
   }
 
@@ -2017,7 +2010,7 @@ export class MenuComponent implements OnInit {
     if (!confirm('Are you sure you want to cancel this entire order?')) {
       return;
     }
-    
+
     this.api.cancelOrder(this.tableToken, orderId, this.sessionId).subscribe({
       next: () => {
         // Clear the order from localStorage
